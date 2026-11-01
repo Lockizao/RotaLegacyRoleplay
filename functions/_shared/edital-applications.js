@@ -1,19 +1,8 @@
+import { findEdital } from "./content.js";
+import { clean, fail, json, originError } from "./http.js";
 const MAX_BODY_BYTES = 24000;
 const encoder = new TextEncoder();
 
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" }
-  });
-}
-function fail(status, message) { const error = new Error(message); error.status = status; return error; }
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => {
-    const code = character.charCodeAt(0);
-    return code >= 32 || code === 9;
-  }).join("").trim().slice(0, limit);
-}
 function normalizePlayerId(value) {
   return clean(value, 40).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -24,16 +13,8 @@ async function hashPlayerId(value) {
 function config(env) {
   const url = String(env.SUPABASE_URL || "").trim().replace(/\/$/, "");
   const key = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  if (!/^https:\/\//i.test(url) || !key) throw fail(503, "O servidor ainda não está conectado ao Supabase. Avise a equipe da ROTA.");
+  if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) || !key) throw fail(503, "O servidor ainda não está conectado ao Supabase. Avise a equipe da ROTA.");
   return { url, key };
-}
-function originError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try {
-    if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada.";
-  } catch (_) { return "Origem inválida."; }
-  return null;
 }
 async function callSupabase(env, path, payload) {
   const cfg = config(env);
@@ -101,6 +82,12 @@ export async function handleEditalApplication(request, env) {
     }
     if (input.action !== "submit") throw fail(400, "Ação inválida.");
     const application = validateApplication(input);
+    // O edital precisa existir e estar aberto agora; o título vem do cadastro, não do navegador.
+    const edital = await findEdital(env, application.editalId);
+    if (!edital) throw fail(404, "Este edital não está disponível.");
+    const now = Date.now();
+    if (now < new Date(edital.opensAt).getTime() || now > new Date(edital.closesAt).getTime()) throw fail(409, "As inscrições deste edital não estão abertas.");
+    application.editalTitle = edital.title;
     const result = await callSupabase(env, "rpc/submit_public_edital_application", {
       p_edital_id: application.editalId,
       p_edital_title: application.editalTitle,

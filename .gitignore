@@ -1,0 +1,8 @@
+# Segredos e estado do ambiente local (wrangler pages dev)
+.dev.vars
+.env
+.wrangler/
+node_modules/
+
+# Gerado por node build.js (o Cloudflare Pages e o Netlify rodam o build no deploy)
+dist/

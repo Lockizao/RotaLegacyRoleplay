@@ -1,23 +1,10 @@
-import { requireAdmin, supabase } from "./blacklist.js";
-
+import { clean, fail, json, originError } from "./http.js";
+import { requireAdmin } from "./auth.js";
+import { supabase } from "./supabase.js";
 const PHOTO_BUCKET = "rota-roster-photos";
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
 const encoder = new TextEncoder();
 
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
-}
-function fail(message, status) { return Object.assign(new Error(message), { status }); }
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => { const code = character.charCodeAt(0); return code >= 32 || code === 9; }).join("").trim().slice(0, limit);
-}
-function originError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try { if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada."; }
-  catch (_) { return "Origem inválida."; }
-  return null;
-}
 function validDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(value + "T00:00:00Z");
@@ -28,7 +15,7 @@ function toRow(row) {
 }
 function photoUrl(env, path) {
   const url = String(env.SUPABASE_URL || "").trim().replace(/\/$/, "");
-  if (!/^https:\/\//i.test(url)) throw fail("O administrador precisa configurar as variáveis Supabase na hospedagem.", 503);
+  if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url)) throw fail(503, "O administrador precisa configurar as variáveis Supabase na hospedagem.");
   return url + "/storage/v1/object/public/" + PHOTO_BUCKET + "/" + path;
 }
 function validPhotoPath(value) {
@@ -67,7 +54,7 @@ export async function handleRoster(request, env) {
     const payload = { qra, full_name: fullName, rank, passport, admitted_on: admittedOn, birth_date: birthDate, status, photo_path: chosenPhoto, photo_url: chosenPhoto ? photoUrl(env, chosenPhoto) : "", updated_at: new Date().toISOString() };
     const endpoint = id ? "/rest/v1/rota_roster?id=eq." + encodeURIComponent(id) : "/rest/v1/rota_roster";
     const rows = await supabase(env, endpoint, { method: id ? "PATCH" : "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) });
-    if (!Array.isArray(rows) || !rows.length) throw fail("O efetivo não foi salvo.", 500);
+    if (!Array.isArray(rows) || !rows.length) throw fail(500, "O efetivo não foi salvo.");
     return json(id ? 200 : 201, { row: toRow(rows[0]) });
   } catch (error) {
     const status = Number.isInteger(error.status) ? error.status : (/variáveis Supabase/.test(error.message || "") ? 503 : 500);
@@ -92,15 +79,15 @@ export async function handleRosterPhoto(request, env) {
     const valid = (mime === "image/jpeg" && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) || (mime === "image/png" && bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) || (mime === "image/webp" && bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP");
     if (!valid) return json(400, { error: "O arquivo não parece ser uma imagem válida." });
     const base = String(env.SUPABASE_URL || "").trim().replace(/\/$/, ""), path = crypto.randomUUID() + "." + ext;
-    if (!/^https:\/\//i.test(base)) throw fail("O administrador precisa configurar as variáveis Supabase na hospedagem.", 503);
+    if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(base)) throw fail(503, "O administrador precisa configurar as variáveis Supabase na hospedagem.");
     const secret = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-    if (!secret) throw fail("Configure a chave secreta do Supabase nas Functions.", 503);
+    if (!secret) throw fail(503, "Configure a chave secreta do Supabase nas Functions.");
     const headers = { apikey: secret, "Content-Type": mime, "cache-control": "public, max-age=31536000, immutable", "x-upsert": "false" };
     if (!/^sb_(?:publishable|secret)_/i.test(secret)) headers.Authorization = "Bearer " + secret;
     const response = await fetch(base + "/storage/v1/object/" + PHOTO_BUCKET + "/" + path, { method: "POST", headers, body: bytes });
     if (!response.ok) {
       const problem = await response.json().catch(() => ({}));
-      throw fail(problem.message || problem.error || "Não foi possível salvar a foto no Supabase Storage.", response.status);
+      throw fail(response.status, problem.message || problem.error || "Não foi possível salvar a foto no Supabase Storage.");
     }
     return json(201, { photoPath: path, photoUrl: photoUrl(env, path) });
   } catch (error) {

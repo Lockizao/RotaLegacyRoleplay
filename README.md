@@ -18,7 +18,7 @@ O projeto pode continuar publicado no Netlify ou ser implantado no Cloudflare Pa
 3. Em **Settings → Variables and Secrets**, adicione as variáveis e segredos da seção Supabase abaixo para **Production**. Configure Preview também caso vá testar deploys de preview. A URL e a chave pública precisam estar disponíveis no build; os segredos são lidos pelas Functions em runtime.
 4. Faça o deploy e teste primeiro no endereço `*.pages.dev`. Mantenha o Netlify ativo até confirmar login, pedidos de acesso, tickets no celular/PC e a integração opcional com Discord. Só depois aponte um domínio próprio para o Cloudflare.
 
-O build cria `dist/_routes.json` para encaminhar somente `/api/*` às Pages Functions; o conteúdo estático continua sendo servido pela CDN. O Netlify mantém a mesma rota `/api/*` por meio do redirecionamento em `netlify.toml`.
+A pasta `dist/` é gerada pelo build e não fica no repositório (está no `.gitignore`); o Cloudflare Pages e o Netlify rodam `node build.js` a cada deploy. O build também acrescenta `?v=<hash do conteúdo>` aos CSS e JS do `index.html`, então não é preciso mexer em versões para atualizar o cache dos navegadores. O build cria `dist/_routes.json` para encaminhar somente `/api/*` às Pages Functions; o conteúdo estático continua sendo servido pela CDN. O Netlify mantém a mesma rota `/api/*` por meio do redirecionamento em `netlify.toml`.
 
 ### Netlify
 
@@ -30,6 +30,12 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
 2. Para habilitar a consulta pública e as fotos da blacklist, execute também `supabase/blacklist.sql` no SQL Editor. Esse script cria/atualiza a tabela, concede leitura pública somente dos campos exibidos e cria o bucket público das imagens. Cidadãos e policiais podem consultar; somente uma sessão de administrador pode incluir ou remover registros.
 3. Cada registro público exibe a foto do personagem, nome e Passaporte Legacy. Cadastre somente personagens e fatos fictícios do roleplay. As fotos ficam acessíveis publicamente no bucket `rota-blacklist-photos`.
 4. Para o livro compartilhado de prisões e as fotos de apreensão, execute (ou execute novamente) `supabase/arrests.sql` antes de publicar. O script atualiza as colunas de armas e imagens e cria o bucket privado `rota-arrest-photos`; listar, registrar, anexar imagens e remover exigem uma conta policial autorizada. As fotos recebem links temporários e só aparecem na área policial.
+
+   Para os quadros compartilhados da área policial (**Operações**, **Registros RP** e **Procurados RP**), execute também `supabase/police-board.sql`. Sem ele, essas páginas mostram "Não foi possível carregar o quadro da equipe".
+
+   Para **Comunicados** e **Editais**, execute `supabase/public-content.sql`. A administração publica e remove os dois pelo **Painel policial** (botões "Publicar comunicado" e "Publicar edital"), sem precisar editar o código. As inscrições só são aceitas para editais publicados e dentro do período de inscrição.
+
+   Ao atualizar o portal, execute de novo o `supabase/schema.sql`: ele pode ser reexecutado com segurança e aplica as proteções novas (decisão única de tickets, limite de pedidos e bloqueio de tentativas de login administrativo).
 
 5. Em **Project Settings → API Keys**, copie a URL do projeto e a chave **publishable** (ou `anon` legado). Nunca use a chave `secret`/`service_role` no navegador.
 6. Na hospedagem, cadastre:
@@ -70,4 +76,14 @@ Os pedidos de B.O. e Ouvidoria são armazenados no Supabase e podem ser enviados
 - Para ativar ou atualizar o fluxo, execute `supabase/edital-applications.sql` no SQL Editor do Supabase antes de publicar o novo código. O script atualiza a tabela e a função de envio e pode ser executado sobre a versão anterior. A função usa as variáveis de servidor `SUPABASE_URL` e `SUPABASE_SECRET_KEY` (ou a chave legada `SUPABASE_SERVICE_ROLE_KEY`) já cadastradas no Cloudflare.
 - `Minhas inscrições` mostra as candidaturas deste navegador. A regra de 48 horas e a gravação principal ficam no servidor, não dependem dessa lista local.
 
-O edital incluído no pacote é demonstrativo. Atualize título, critérios e prazos para o processo seletivo real antes de divulgá-lo.
+Os editais são publicados e removidos pela administração no **Painel policial**, com título, resumo e período de inscrição. O servidor recusa inscrições em editais inexistentes, agendados ou encerrados, e grava o título do edital cadastrado.
+
+## Desenvolvimento local
+
+É possível rodar o portal completo no próprio computador, sem tocar no projeto publicado:
+
+1. Instale o Docker Desktop e suba um Supabase local com `npx supabase init` e `npx supabase start` (numa pasta separada). Execute os arquivos de `supabase/` no banco local, na mesma ordem descrita acima.
+2. Crie um arquivo `.dev.vars` na raiz deste projeto com `SUPABASE_URL` (por exemplo `http://127.0.0.1:54321`), `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `ROTA_ADMIN_USERNAME`, `ROTA_ADMIN_PASSWORD` e `ROTA_SESSION_SECRET`. Os valores do Supabase local aparecem em `npx supabase status`. O `.dev.vars` está no `.gitignore` e nunca deve ser enviado ao GitHub.
+3. Gere o site com essas variáveis (`node build.js`) e rode `npx wrangler pages dev dist --port 8788`.
+
+Endereços `http://` só são aceitos para `localhost` e `127.0.0.1`; em produção a URL do Supabase continua precisando ser `https://`.

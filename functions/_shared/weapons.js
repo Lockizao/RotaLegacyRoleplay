@@ -1,0 +1,2 @@
+// Armas aceitas no registro de prisões (mesma lista exibida no formulário em js/app.js).
+export const GTA_WEAPONS = new Set(["Soco inglês","Taco de beisebol","Taco de golfe","Cassetete","Faca","Pá","Taco de sinuca","Katana","Motosserra","Pistola 9mm","Pistola 9mm com silenciador","Desert Eagle","Espingarda","Espingarda serrada","Espingarda de combate","Micro SMG","Tec-9","MP5","AK-47","M4","Rifle","Rifle de precisão","Lança-foguetes","Lança-foguetes teleguiado","Lança-chamas","Minigun","Granada","Gás lacrimogêneo","Coquetel molotov","Carga explosiva (Satchel)"]);

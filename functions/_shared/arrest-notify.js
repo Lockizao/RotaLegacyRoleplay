@@ -1,36 +1,14 @@
-import { requireStaff } from "./blacklist.js";
+import { clean, json, originError } from "./http.js";
+import { requireStaff } from "./auth.js";
+import { GTA_WEAPONS } from "./weapons.js";
 const MAX_BODY_BYTES = 12000;
 const FIELD_LIMITS = { person: 80, playerId: 24, officer: 80, hasC4: 8, hasDirtyMoney: 8, hasDrugs: 8, reason: 250, sentence: 60, detail: 1500 };
 const encoder = new TextEncoder();
-const GTA_WEAPONS = new Set(["Soco inglês","Taco de beisebol","Taco de golfe","Cassetete","Faca","Pá","Taco de sinuca","Katana","Motosserra","Pistola 9mm","Pistola 9mm com silenciador","Desert Eagle","Espingarda","Espingarda serrada","Espingarda de combate","Micro SMG","Tec-9","MP5","AK-47","M4","Rifle","Rifle de precisão","Lança-foguetes","Lança-foguetes teleguiado","Lança-chamas","Minigun","Granada","Gás lacrimogêneo","Coquetel molotov","Carga explosiva (Satchel)"]);
-
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
-  });
-}
-
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => {
-    const code = character.charCodeAt(0);
-    return code >= 32 || code === 9;
-  }).join("").trim().slice(0, limit);
-}
-
-function getOriginError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try {
-    if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada.";
-  } catch (_) { return "Origem inválida."; }
-  return null;
-}
 
 export async function handleArrestNotify(request, env) {
   if (request.method !== "POST") return json(405, { error: "Método não permitido." });
-  const originError = getOriginError(request);
-  if (originError) return json(403, { error: originError });
+  const rejectedOrigin = originError(request);
+  if (rejectedOrigin) return json(403, { error: rejectedOrigin });
   try { await requireStaff(request, env); }
   catch (error) { return json(Number.isInteger(error.status) ? error.status : 401, { error: error.message || "Acesso policial autorizado necessário." }); }
   const bodyText = await request.text();

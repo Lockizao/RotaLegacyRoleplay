@@ -1,77 +1,12 @@
+import { clean, json, originError } from "./http.js";
+import { requireAdmin } from "./auth.js";
+import { configuration, supabase } from "./supabase.js";
 const MAX_BODY_BYTES = 5000;
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
 const PHOTO_BUCKET = "rota-blacklist-photos";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
-}
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => { const code = character.charCodeAt(0); return code >= 32 || code === 9; }).join("").trim().slice(0, limit);
-}
-function configuration(env, requireServiceKey) {
-  const url = String(env.SUPABASE_URL || "").trim().replace(/\/$/, "");
-  const serviceKey = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  const publicKey = String(env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "").trim();
-  if (!/^https:\/\//i.test(url) || (requireServiceKey !== false && !serviceKey) || !publicKey) throw Object.assign(new Error("O administrador precisa configurar as variáveis Supabase na hospedagem."), { status: 503 });
-  return { url, serviceKey, publicKey };
-}
-function originError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try { if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada."; }
-  catch (_) { return "Origem inválida."; }
-  return null;
-}
-function decodeBase64Url(value) {
-  const base64 = String(value).replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
-  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
-}
-function encodeBase64Url(bytes) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-async function verifyAdmin(request, env) {
-  const secret = String(env.ROTA_SESSION_SECRET || ""), parts = String(request.headers.get("x-rota-admin-session") || "").split(".");
-  if (secret.length < 32 || parts.length !== 2) return false;
-  try {
-    const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const expected = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(parts[0]))), actual = decodeBase64Url(parts[1]);
-    if (actual.length !== expected.length) return false;
-    let difference = 0; for (let i = 0; i < expected.length; i++) difference |= expected[i] ^ actual[i];
-    if (difference) return false;
-    const payload = JSON.parse(decoder.decode(decodeBase64Url(parts[0])));
-    return payload.role === "admin" && payload.exp > Math.floor(Date.now() / 1000);
-  } catch (_) { return false; }
-}
-export async function supabase(env, endpoint, options, usePublic) {
-  const cfg = configuration(env, !usePublic), key = usePublic ? cfg.publicKey : cfg.serviceKey, init = options || {};
-  const headers = { apikey: key, "Content-Type": "application/json", ...(init.headers || {}) };
-  if (!headers.Authorization && !/^sb_(?:publishable|secret)_/i.test(key)) headers.Authorization = "Bearer " + key;
-  init.headers = headers;
-  const response = await fetch(cfg.url + endpoint, init), body = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(body.message || body.msg || body.error_description || body.error || "Falha ao acessar o Supabase."), { status: response.status });
-  return body;
-}
-export async function requireAdmin(request, env) {
-  if (await verifyAdmin(request, env)) return { id: null, role: "admin" };
-  throw Object.assign(new Error("Somente o administrador pode fazer esta alteração."), { status: 401 });
-}
-export async function requireStaff(request, env) {
-  if (await verifyAdmin(request, env)) return { id: null, role: "admin" };
-  const authorization = String(request.headers.get("authorization") || ""), match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) throw Object.assign(new Error("Entre com uma conta policial autorizada para acessar este recurso."), { status: 401 });
-  const cfg = configuration(env), token = match[1];
-  const userResponse = await fetch(cfg.url + "/auth/v1/user", { headers: { apikey: cfg.publicKey, Authorization: "Bearer " + token } });
-  const user = await userResponse.json().catch(() => ({}));
-  if (!userResponse.ok || !user.id) throw Object.assign(new Error("Sessão policial inválida ou expirada."), { status: 401 });
-  const members = await supabase(env, "/rest/v1/police_users?select=user_id,role,enabled&user_id=eq." + encodeURIComponent(user.id) + "&enabled=eq.true&limit=1", { method: "GET" });
-  if (!Array.isArray(members) || !members.length) throw Object.assign(new Error("Esta conta não está autorizada para acessar este recurso."), { status: 403 });
-  return { id: user.id, role: members[0].role || "policial" };
-}
 function publicRow(row) {
   return { id: row.id, characterName: row.character_name, playerId: row.player_id, photoUrl: row.photo_url || "", createdAt: row.created_at };
 }
