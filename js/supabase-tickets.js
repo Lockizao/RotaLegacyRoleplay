@@ -281,6 +281,10 @@
     return body;
   }
   async function removeArrest(id) { return protectedRequest("/api/arrests", "DELETE", { id: id }); }
+  async function listBoard(kind) { var result = await protectedRequest("/api/board?kind=" + encodeURIComponent(kind), "GET"); return result.rows || []; }
+  async function createBoardEntry(record) { return protectedRequest("/api/board", "POST", record); }
+  async function updateBoardStatus(id, status) { return protectedRequest("/api/board", "PATCH", { id: id, status: status }); }
+  async function removeBoardEntry(id) { return protectedRequest("/api/board", "DELETE", { id: id }); }
   async function listRoster() {
     var response = await fetch("/api/roster", { method: "GET", headers: { Accept: "application/json" } });
     var body = await response.json().catch(function () { return {}; });
@@ -324,6 +328,10 @@
     notifyArrest: notifyArrest,
     uploadArrestPhoto: uploadArrestPhoto,
     removeArrest: removeArrest,
+    listBoard: listBoard,
+    createBoardEntry: createBoardEntry,
+    updateBoardStatus: updateBoardStatus,
+    removeBoardEntry: removeBoardEntry,
     listRoster: listRoster,
     saveRoster: saveRoster,
     uploadRosterPhoto: uploadRosterPhoto

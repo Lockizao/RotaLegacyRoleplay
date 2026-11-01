@@ -31,6 +31,10 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
 3. Cada registro público exibe a foto do personagem, nome e Passaporte Legacy. Cadastre somente personagens e fatos fictícios do roleplay. As fotos ficam acessíveis publicamente no bucket `rota-blacklist-photos`.
 4. Para o livro compartilhado de prisões e as fotos de apreensão, execute (ou execute novamente) `supabase/arrests.sql` antes de publicar. O script atualiza as colunas de armas e imagens e cria o bucket privado `rota-arrest-photos`; listar, registrar, anexar imagens e remover exigem uma conta policial autorizada. As fotos recebem links temporários e só aparecem na área policial.
 
+   Para os quadros compartilhados da área policial (**Operações**, **Registros RP** e **Procurados RP**), execute também `supabase/police-board.sql`. Sem ele, essas páginas mostram "Não foi possível carregar o quadro da equipe".
+
+   Ao atualizar o portal, execute de novo o `supabase/schema.sql`: ele pode ser reexecutado com segurança e aplica as proteções novas (decisão única de tickets, limite de pedidos e bloqueio de tentativas de login administrativo).
+
 5. Em **Project Settings → API Keys**, copie a URL do projeto e a chave **publishable** (ou `anon` legado). Nunca use a chave `secret`/`service_role` no navegador.
 6. Na hospedagem, cadastre:
 
@@ -71,3 +75,13 @@ Os pedidos de B.O. e Ouvidoria são armazenados no Supabase e podem ser enviados
 - `Minhas inscrições` mostra as candidaturas deste navegador. A regra de 48 horas e a gravação principal ficam no servidor, não dependem dessa lista local.
 
 O edital incluído no pacote é demonstrativo. Atualize título, critérios e prazos para o processo seletivo real antes de divulgá-lo.
+
+## Desenvolvimento local
+
+É possível rodar o portal completo no próprio computador, sem tocar no projeto publicado:
+
+1. Instale o Docker Desktop e suba um Supabase local com `npx supabase init` e `npx supabase start` (numa pasta separada). Execute os arquivos de `supabase/` no banco local, na mesma ordem descrita acima.
+2. Crie um arquivo `.dev.vars` na raiz deste projeto com `SUPABASE_URL` (por exemplo `http://127.0.0.1:54321`), `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `ROTA_ADMIN_USERNAME`, `ROTA_ADMIN_PASSWORD` e `ROTA_SESSION_SECRET`. Os valores do Supabase local aparecem em `npx supabase status`. O `.dev.vars` está no `.gitignore` e nunca deve ser enviado ao GitHub.
+3. Gere o site com essas variáveis (`node build.js`) e rode `npx wrangler pages dev dist --port 8788`.
+
+Endereços `http://` só são aceitos para `localhost` e `127.0.0.1`; em produção a URL do Supabase continua precisando ser `https://`. Não faça commit da pasta `dist/` gerada localmente, porque ela aponta para o Supabase local.
