@@ -18,6 +18,14 @@
     if (session) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
     else sessionStorage.removeItem(SESSION_KEY);
   }
+  // Revoga a sessão do policial no Supabase (o refresh_token deixa de valer) antes de limpar o navegador.
+  function signOut() {
+    var officerToken = current && current.access_token && current.access_token !== "admin" ? current.access_token : "";
+    if (officerToken && isConfigured()) {
+      fetch(url + "/auth/v1/logout?scope=local", { method: "POST", headers: apiHeaders(officerToken), keepalive: true }).catch(function () {});
+    }
+    saveSession(null); adminToken = ""; sessionStorage.removeItem(ADMIN_KEY);
+  }
   function isConfigured() {
     return /^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) && !!key && !/COLE_AQUI|SUA_CHAVE/i.test(key);
   }
@@ -320,7 +328,7 @@
     requestAccess: requestAccess,
     requestTokenReset: requestTokenReset,
     adminAction: adminAction,
-    signOut: function () { saveSession(null); adminToken = ""; sessionStorage.removeItem(ADMIN_KEY); },
+    signOut: signOut,
     submit: submit,
     getCitizenStatus: getCitizenStatus,
     list: list,
