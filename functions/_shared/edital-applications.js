@@ -1,21 +1,8 @@
 import { findEdital } from "./content.js";
-
+import { clean, fail, json, originError } from "./http.js";
 const MAX_BODY_BYTES = 24000;
 const encoder = new TextEncoder();
 
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" }
-  });
-}
-function fail(status, message) { const error = new Error(message); error.status = status; return error; }
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => {
-    const code = character.charCodeAt(0);
-    return code >= 32 || code === 9;
-  }).join("").trim().slice(0, limit);
-}
 function normalizePlayerId(value) {
   return clean(value, 40).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -28,14 +15,6 @@ function config(env) {
   const key = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) || !key) throw fail(503, "O servidor ainda não está conectado ao Supabase. Avise a equipe da ROTA.");
   return { url, key };
-}
-function originError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try {
-    if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada.";
-  } catch (_) { return "Origem inválida."; }
-  return null;
 }
 async function callSupabase(env, path, payload) {
   const cfg = config(env);

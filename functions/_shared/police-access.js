@@ -1,25 +1,9 @@
+import { clean, encodeBase64Url, fail, json, originError } from "./http.js";
+import { requireAdmin, signAdmin } from "./auth.js";
 const MAX_BODY_BYTES = 16000;
 const SESSION_SECONDS = 8 * 60 * 60;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff"
-    }
-  });
-}
-
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => {
-    const code = character.charCodeAt(0);
-    return code >= 32 || code === 9;
-  }).join("").trim().slice(0, limit);
-}
 
 function normalizeName(value) {
   return clean(value, 80).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -28,19 +12,6 @@ function normalizeName(value) {
 
 function syntheticEmail(normalized) {
   return "rota." + normalized + "@members.invalid";
-}
-
-function encodeBase64Url(bytes) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-
-function decodeBase64Url(value) {
-  const base64 = String(value).replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function randomToken() {
@@ -57,18 +28,6 @@ function config(env) {
     throw new Error("O administrador precisa configurar as variáveis Supabase na hospedagem.");
   }
   return { url, serviceKey, publicKey };
-}
-
-function getOriginError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try {
-    const requestHost = new URL(request.url).host.toLowerCase();
-    if (new URL(origin).host.toLowerCase() !== requestHost) return "Origem não autorizada.";
-  } catch (_) {
-    return "Origem inválida.";
-  }
-  return null;
 }
 
 async function callSupabase(env, path, options, usePublicKey) {
@@ -98,60 +57,16 @@ async function db(env, path, method, body, prefer) {
   });
 }
 
-async function signAdmin(env, payload) {
-  const secret = String(env.ROTA_SESSION_SECRET || "");
-  if (secret.length < 32) throw new Error("Configure ROTA_SESSION_SECRET com pelo menos 32 caracteres.");
-  const data = encodeBase64Url(encoder.encode(JSON.stringify(payload)));
-  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(data)));
-  return data + "." + encodeBase64Url(signature);
-}
-
-async function verifyAdmin(request, env) {
-  const secret = String(env.ROTA_SESSION_SECRET || "");
-  if (secret.length < 32) return false;
-  const token = String(request.headers.get("x-rota-admin-session") || "");
-  const parts = token.split(".");
-  if (parts.length !== 2) return false;
-  try {
-    const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const expected = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(parts[0])));
-    const actual = decodeBase64Url(parts[1]);
-    if (actual.length !== expected.length) return false;
-    let difference = 0;
-    for (let i = 0; i < expected.length; i++) difference |= expected[i] ^ actual[i];
-    if (difference !== 0) return false;
-    const payload = JSON.parse(decoder.decode(decodeBase64Url(parts[0])));
-    return payload.role === "admin" && payload.exp > Math.floor(Date.now() / 1000);
-  } catch (_) {
-    return false;
-  }
-}
-
-async function requireAdmin(request, env) {
-  if (!(await verifyAdmin(request, env))) {
-    const error = new Error("Sessão administrativa inválida ou expirada.");
-    error.status = 401;
-    throw error;
-  }
-}
-
-function fail(message, status) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
-
 function getTicketTable(kind) {
   if (kind === "ouvidoria") return "ouvidoria_tickets";
   if (kind === "bo") return "bo_tickets";
-  throw fail("Tipo de ticket inválido.", 400);
+  throw fail(400, "Tipo de ticket inválido.");
 }
 
 async function createAccessRequest(env, input, requestType) {
   const name = clean(input.name, 80);
   const normalized = normalizeName(name);
-  if (name.length < 2 || normalized.length < 2) throw fail("Informe seu nome para continuar.", 400);
+  if (name.length < 2 || normalized.length < 2) throw fail(400, "Informe seu nome para continuar.");
   const row = { display_name: name, normalized_name: normalized, request_type: requestType, status: "Pendente" };
   try {
     await db(env, "access_requests", "POST", row, "return=minimal");
@@ -167,18 +82,18 @@ async function createAccessRequest(env, input, requestType) {
 async function officerLogin(env, input) {
   const normalized = normalizeName(input.name);
   const token = clean(input.token, 100);
-  if (normalized.length < 2 || token.length < 12) throw fail("Informe seu nome e o token recebido da administração.", 400);
+  if (normalized.length < 2 || token.length < 12) throw fail(400, "Informe seu nome e o token recebido da administração.");
   let session;
   try {
     session = await callSupabase(env, "/auth/v1/token?grant_type=password", {
       method: "POST", body: JSON.stringify({ email: syntheticEmail(normalized), password: token })
     }, true);
   } catch (error) {
-    if (error.status === 400 || error.status === 401) throw fail("Nome ou token incorreto. Se esqueceu o token, solicite uma troca.", 401);
+    if (error.status === 400 || error.status === 401) throw fail(401, "Nome ou token incorreto. Se esqueceu o token, solicite uma troca.");
     throw error;
   }
   const members = await db(env, "police_users?select=user_id,display_name,normalized_name,role,enabled&user_id=eq." + encodeURIComponent(session.user.id) + "&enabled=eq.true", "GET");
-  if (!Array.isArray(members) || !members.length) throw fail("Esta conta não está autorizada. Peça aprovação à administração.", 403);
+  if (!Array.isArray(members) || !members.length) throw fail(403, "Esta conta não está autorizada. Peça aprovação à administração.");
   await db(env, "login_events", "POST", { user_id: session.user.id, display_name: members[0].display_name, role: members[0].role || "policial", logged_at: new Date().toISOString() }, "return=minimal");
   session.user.user_metadata = session.user.user_metadata || {};
   session.user.user_metadata.full_name = members[0].display_name;
@@ -204,11 +119,11 @@ async function assertAdminNotLocked(env, clientKey) {
   try {
     failures = await db(env, "admin_login_attempts?select=client_key&succeeded=eq.false&attempted_at=gte." + encodeURIComponent(since) + "&limit=" + ADMIN_MAX_FAILURES_TOTAL, "GET");
   } catch (_) {
-    throw fail("Login administrativo indisponível: execute o supabase/schema.sql atualizado no Supabase.", 503);
+    throw fail(503, "Login administrativo indisponível: execute o supabase/schema.sql atualizado no Supabase.");
   }
   const rows = Array.isArray(failures) ? failures : [];
   if (rows.length >= ADMIN_MAX_FAILURES_TOTAL || rows.filter((row) => row.client_key === clientKey).length >= ADMIN_MAX_FAILURES_PER_CLIENT) {
-    throw fail("Muitas tentativas de login. Aguarde " + ADMIN_LOCK_MINUTES + " minutos e tente novamente.", 429);
+    throw fail(429, "Muitas tentativas de login. Aguarde " + ADMIN_LOCK_MINUTES + " minutos e tente novamente.");
   }
 }
 
@@ -218,7 +133,7 @@ async function adminLogin(env, input, request) {
   await assertAdminNotLocked(env, clientKey);
   const expectedUser = String(env.ROTA_ADMIN_USERNAME || "");
   const expectedPassword = String(env.ROTA_ADMIN_PASSWORD || "");
-  if (expectedPassword.length < 12) throw fail("Defina uma senha administrativa forte na variável ROTA_ADMIN_PASSWORD.", 503);
+  if (expectedPassword.length < 12) throw fail(503, "Defina uma senha administrativa forte na variável ROTA_ADMIN_PASSWORD.");
   const submittedUser = clean(input.username, 60);
   const submittedPassword = encoder.encode(String(input.password || ""));
   const expectedBuffer = encoder.encode(expectedPassword);
@@ -228,7 +143,7 @@ async function adminLogin(env, input, request) {
   for (let i = 0; i < length; i++) difference |= (submittedPassword[i] || 0) ^ (expectedBuffer[i] || 0);
   const succeeded = userOk && difference === 0;
   await db(env, "admin_login_attempts", "POST", { client_key: clientKey, succeeded }, "return=minimal");
-  if (!succeeded) throw fail("Usuário ou senha administrativa incorretos.", 401);
+  if (!succeeded) throw fail(401, "Usuário ou senha administrativa incorretos.");
   const now = Math.floor(Date.now() / 1000);
   return { adminToken: await signAdmin(env, { role: "admin", iat: now, exp: now + SESSION_SECONDS }) };
 }
@@ -267,8 +182,8 @@ async function dashboard(env) {
 
 async function issueForOfficer(env, userId, reactivate) {
   const rows = await db(env, "police_users?select=user_id,display_name,normalized_name,role,enabled&user_id=eq." + encodeURIComponent(userId) + "&limit=1", "GET");
-  if (!Array.isArray(rows) || !rows.length) throw fail("Integrante não encontrado.", 404);
-  if (!rows[0].enabled && !reactivate) throw fail("Esta conta está desativada. Reative antes de trocar o token.", 409);
+  if (!Array.isArray(rows) || !rows.length) throw fail(404, "Integrante não encontrado.");
+  if (!rows[0].enabled && !reactivate) throw fail(409, "Esta conta está desativada. Reative antes de trocar o token.");
   const token = randomToken();
   await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(userId), { method: "PUT", body: JSON.stringify({ password: token }) });
   if (!rows[0].enabled) await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { enabled: true }, "return=minimal");
@@ -277,7 +192,7 @@ async function issueForOfficer(env, userId, reactivate) {
 }
 
 async function handleAdmin(request, env, input) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, "Sessão administrativa inválida ou expirada.");
   if (input.action === "admin-session") return { valid: true };
   if (input.action === "admin-dashboard") return dashboard(env);
   if (input.action === "edital-applications-list") {
@@ -292,21 +207,21 @@ async function handleAdmin(request, env, input) {
     const table = getTicketTable(input.kind);
     const status = input.status === "Aceito" || input.status === "Recusado" ? input.status : "";
     const publicId = clean(input.publicId, 32);
-    if (!status || !publicId) throw fail("Decisão inválida.", 400);
+    if (!status || !publicId) throw fail(400, "Decisão inválida.");
     const rows = await db(env, table + "?public_id=eq." + encodeURIComponent(publicId) + "&status=eq.Pendente", "PATCH", { status, decision_at: new Date().toISOString() }, "return=representation");
-    if (!Array.isArray(rows) || !rows.length) throw fail("Este ticket já foi decidido ou não está disponível.", 409);
+    if (!Array.isArray(rows) || !rows.length) throw fail(409, "Este ticket já foi decidido ou não está disponível.");
     return { row: rows[0] };
   }
   if (input.action === "request-decide") {
     const id = clean(input.id, 60);
     const decision = input.status === "Aprovado" || input.status === "Recusado" ? input.status : "";
-    if (!id || !decision) throw fail("Solicitação ou decisão inválida.", 400);
+    if (!id || !decision) throw fail(400, "Solicitação ou decisão inválida.");
     const requests = await db(env, "access_requests?select=id,display_name,normalized_name,request_type,status&id=eq." + encodeURIComponent(id) + "&limit=1", "GET");
-    if (!requests.length || requests[0].status !== "Pendente") throw fail("Solicitação não encontrada ou já analisada.", 409);
+    if (!requests.length || requests[0].status !== "Pendente") throw fail(409, "Solicitação não encontrada ou já analisada.");
     const requestRow = requests[0];
     if (requestRow.request_type === "acesso" && decision === "Aprovado") {
       const existing = await db(env, "police_users?select=user_id&normalized_name=eq." + encodeURIComponent(requestRow.normalized_name) + "&limit=1", "GET");
-      if (existing.length) throw fail("Já existe uma conta policial com este nome. Use a opção de troca de token.", 409);
+      if (existing.length) throw fail(409, "Já existe uma conta policial com este nome. Use a opção de troca de token.");
       const token = randomToken();
       let created;
       try {
@@ -324,7 +239,7 @@ async function handleAdmin(request, env, input) {
     }
     if (requestRow.request_type === "troca_token" && decision === "Aprovado") {
       const account = await db(env, "police_users?select=user_id,enabled&normalized_name=eq." + encodeURIComponent(requestRow.normalized_name) + "&limit=1", "GET");
-      if (!account.length) throw fail("Não há conta policial para este pedido de troca.", 404);
+      if (!account.length) throw fail(404, "Não há conta policial para este pedido de troca.");
       return issueForOfficer(env, account[0].user_id, true);
     }
     await db(env, "access_requests?id=eq." + encodeURIComponent(id), "PATCH", { status: decision, decided_at: new Date().toISOString() }, "return=minimal");
@@ -333,19 +248,19 @@ async function handleAdmin(request, env, input) {
   if (input.action === "token-rotate") return issueForOfficer(env, clean(input.userId, 80));
   if (input.action === "officer-toggle") {
     const userId = clean(input.userId, 80);
-    if (!userId) throw fail("Conta inválida.", 400);
+    if (!userId) throw fail(400, "Conta inválida.");
     const rows = await db(env, "police_users?select=user_id,enabled&user_id=eq." + encodeURIComponent(userId) + "&limit=1", "GET");
-    if (!rows.length) throw fail("Conta não encontrada.", 404);
+    if (!rows.length) throw fail(404, "Conta não encontrada.");
     const updated = await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { enabled: !rows[0].enabled }, "return=representation");
     return { officer: updated[0] };
   }
-  throw fail("Ação desconhecida.", 400);
+  throw fail(400, "Ação desconhecida.");
 }
 
 export async function handlePoliceAccess(request, env) {
   if (request.method !== "POST") return json(405, { error: "Método não permitido." });
-  const originError = getOriginError(request);
-  if (originError) return json(403, { error: originError });
+  const rejectedOrigin = originError(request);
+  if (rejectedOrigin) return json(403, { error: rejectedOrigin });
   const bodyText = await request.text();
   if (encoder.encode(bodyText).byteLength > MAX_BODY_BYTES) return json(413, { error: "Solicitação muito grande." });
   let input;

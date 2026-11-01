@@ -1,13 +1,12 @@
-import { requireStaff, supabase } from "./blacklist.js";
+import { clean, json, originError } from "./http.js";
+import { requireStaff } from "./auth.js";
+import { supabase } from "./supabase.js";
+import { GTA_WEAPONS } from "./weapons.js";
 const encoder = new TextEncoder();
 const MAX_BODY_BYTES = 12000;
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
 const PHOTO_BUCKET = "rota-arrest-photos";
 const PHOTO_RETENTION_DAYS = 30;
-const GTA_WEAPONS = new Set(["Soco inglês","Taco de beisebol","Taco de golfe","Cassetete","Faca","Pá","Taco de sinuca","Katana","Motosserra","Pistola 9mm","Pistola 9mm com silenciador","Desert Eagle","Espingarda","Espingarda serrada","Espingarda de combate","Micro SMG","Tec-9","MP5","AK-47","M4","Rifle","Rifle de precisão","Lança-foguetes","Lança-foguetes teleguiado","Lança-chamas","Minigun","Granada","Gás lacrimogêneo","Coquetel molotov","Carga explosiva (Satchel)"]);
-function json(status, payload) { return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } }); }
-function clean(value, limit) { return Array.from(String(value || "")).filter((character) => { const code = character.charCodeAt(0); return code >= 32 || code === 9; }).join("").trim().slice(0, limit); }
-function originError(request) { const origin = request.headers.get("origin"); if (!origin || origin === "null") return null; try { if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada."; } catch (_) { return "Origem inválida."; } return null; }
 function config(env) { const base = String(env.SUPABASE_URL || "").trim().replace(/\/$/, ""), secret = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim(); if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(base) || !secret) throw Object.assign(new Error("O administrador precisa configurar as variáveis Supabase na hospedagem."), { status: 503 }); const headers = { apikey: secret, "Content-Type": "application/json" }; if (!/^sb_(?:publishable|secret)_/i.test(secret)) headers.Authorization = "Bearer " + secret; return { base, headers }; }
 function validPhotoPath(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|png|webp)$/i.test(String(value || "")); }
 async function signedPhotoUrl(env, path) { if (!validPhotoPath(path)) return ""; const { base, headers } = config(env); const response = await fetch(base + "/storage/v1/object/sign/" + PHOTO_BUCKET + "/" + encodeURIComponent(path), { method: "POST", headers, body: JSON.stringify({ expiresIn: 86400 }) }); const body = await response.json().catch(() => ({})); if (!response.ok) throw Object.assign(new Error(body.message || body.error || "Não foi possível carregar uma foto do registro."), { status: response.status }); const signed = body.signedURL || body.signedUrl || ""; return !signed ? "" : /^https:\/\//i.test(signed) ? signed : base + "/storage/v1" + (signed.startsWith("/") ? signed : "/" + signed); }
