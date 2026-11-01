@@ -20,7 +20,7 @@ function readPublicSetting(name) {
 const supabaseUrl = String(process.env.SUPABASE_URL || readPublicSetting("url")).trim().replace(/\/$/, "");
 const publishableKey = String(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || readPublicSetting("publishableKey")).trim();
 const publicConfig = {
-  url: /^https:\/\//i.test(supabaseUrl) ? supabaseUrl : "",
+  url: /^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(supabaseUrl) ? supabaseUrl : "",
   publishableKey: publishableKey && !/service_role|sb_secret_/i.test(publishableKey) ? publishableKey : ""
 };
 fs.writeFileSync(
@@ -30,4 +30,14 @@ fs.writeFileSync(
 // Cloudflare Pages Functions serve only the API routes; static assets stay
 // on the CDN and do not invoke a Function.
 fs.writeFileSync(path.join(out, "_routes.json"), JSON.stringify({ version: 1, include: ["/api/*"], exclude: [] }, null, 2) + "\n");
+// Cache busting automático: cada CSS/JS local do index.html recebe ?v=<hash do conteúdo>,
+// então o navegador só baixa de novo o que mudou (substitui o ?v= manual).
+const crypto = require("crypto");
+const indexPath = path.join(out, "index.html");
+const versioned = fs.readFileSync(indexPath, "utf8").replace(/((?:href|src)=")((?:css|js)\/[^"?#]+)(?:\?[^"#]*)?"/g, (match, prefix, file) => {
+  const target = path.join(out, file);
+  if (!fs.existsSync(target)) return match;
+  return prefix + file + "?v=" + crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex").slice(0, 10) + "\"";
+});
+fs.writeFileSync(indexPath, versioned);
 console.log("Static portal copied to dist/.");
