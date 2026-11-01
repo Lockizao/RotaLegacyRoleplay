@@ -33,6 +33,8 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
 
    Para os quadros compartilhados da área policial (**Operações**, **Registros RP** e **Procurados RP**), execute também `supabase/police-board.sql`. Sem ele, essas páginas mostram "Não foi possível carregar o quadro da equipe".
 
+   Para **Comunicados** e **Editais**, execute `supabase/public-content.sql`. A administração publica e remove os dois pelo **Painel policial** (botões "Publicar comunicado" e "Publicar edital"), sem precisar editar o código. As inscrições só são aceitas para editais publicados e dentro do período de inscrição.
+
    Ao atualizar o portal, execute de novo o `supabase/schema.sql`: ele pode ser reexecutado com segurança e aplica as proteções novas (decisão única de tickets, limite de pedidos e bloqueio de tentativas de login administrativo).
 
 5. Em **Project Settings → API Keys**, copie a URL do projeto e a chave **publishable** (ou `anon` legado). Nunca use a chave `secret`/`service_role` no navegador.
@@ -74,7 +76,7 @@ Os pedidos de B.O. e Ouvidoria são armazenados no Supabase e podem ser enviados
 - Para ativar ou atualizar o fluxo, execute `supabase/edital-applications.sql` no SQL Editor do Supabase antes de publicar o novo código. O script atualiza a tabela e a função de envio e pode ser executado sobre a versão anterior. A função usa as variáveis de servidor `SUPABASE_URL` e `SUPABASE_SECRET_KEY` (ou a chave legada `SUPABASE_SERVICE_ROLE_KEY`) já cadastradas no Cloudflare.
 - `Minhas inscrições` mostra as candidaturas deste navegador. A regra de 48 horas e a gravação principal ficam no servidor, não dependem dessa lista local.
 
-O edital incluído no pacote é demonstrativo. Atualize título, critérios e prazos para o processo seletivo real antes de divulgá-lo.
+Os editais são publicados e removidos pela administração no **Painel policial**, com título, resumo e período de inscrição. O servidor recusa inscrições em editais inexistentes, agendados ou encerrados, e grava o título do edital cadastrado.
 
 ## Desenvolvimento local
 
