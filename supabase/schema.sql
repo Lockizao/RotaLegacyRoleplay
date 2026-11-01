@@ -103,10 +103,36 @@ revoke all on public.access_requests from anon, authenticated;
 revoke all on public.login_events from anon, authenticated;
 revoke all on public.police_users from anon;
 grant select on public.police_users to authenticated;
-grant insert, select on public.ouvidoria_tickets to anon, authenticated;
-grant update, select on public.ouvidoria_tickets to authenticated;
-grant insert, select on public.bo_tickets to anon, authenticated;
-grant update, select on public.bo_tickets to authenticated;
+-- Policiais só leem os campos do atendimento (o tracking_token fica com o cidadão)
+-- e só alteram a decisão; texto, contato e datas do ticket não podem ser reescritos.
+revoke all on public.ouvidoria_tickets from anon, authenticated;
+revoke all on public.bo_tickets from anon, authenticated;
+grant insert on public.ouvidoria_tickets to anon, authenticated;
+grant insert on public.bo_tickets to anon, authenticated;
+grant select (public_id, status, decision_at, created_at) on public.ouvidoria_tickets to anon;
+grant select (public_id, status, decision_at, created_at) on public.bo_tickets to anon;
+grant select (id, public_id, discord, player, legacy_name, reason, category, detail, status, created_at, decision_at) on public.ouvidoria_tickets to authenticated;
+grant select (id, public_id, discord, player, legacy_name, reason, category, detail, status, created_at, decision_at) on public.bo_tickets to authenticated;
+grant update (status, decision_at) on public.ouvidoria_tickets to authenticated;
+grant update (status, decision_at) on public.bo_tickets to authenticated;
+
+-- Uma decisão só pode ser tomada uma vez: Pendente -> Aceito/Recusado.
+create or replace function public.enforce_ticket_decision()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if old.status <> 'Pendente' or new.status not in ('Aceito', 'Recusado') then
+    raise exception 'Este ticket já foi decidido.' using errcode = 'check_violation';
+  end if;
+  new.decision_at := now();
+  return new;
+end;
+$$;
+drop trigger if exists enforce_ouvidoria_ticket_decision on public.ouvidoria_tickets;
+create trigger enforce_ouvidoria_ticket_decision before update on public.ouvidoria_tickets
+  for each row execute function public.enforce_ticket_decision();
+drop trigger if exists enforce_bo_ticket_decision on public.bo_tickets;
+create trigger enforce_bo_ticket_decision before update on public.bo_tickets
+  for each row execute function public.enforce_ticket_decision();
 
 drop policy if exists "police can read own membership" on public.police_users;
 create policy "police can read own membership" on public.police_users for select to authenticated
@@ -329,12 +355,17 @@ create table if not exists public.rota_blacklist (
 create index if not exists rota_blacklist_active_created_idx
   on public.rota_blacklist (created_at desc) where is_active = true;
 
-alter table public.rota_blacklist enable row level security;
-revoke all on public.rota_blacklist from public, anon, authenticated;
-grant all on public.rota_blacklist to service_role;
-
 alter table public.rota_blacklist add column if not exists photo_path text not null default '';
 alter table public.rota_blacklist add column if not exists photo_url text not null default '';
+
+-- Mantém a leitura pública igual à de blacklist.sql; sem este grant, rodar o schema
+-- de novo derruba a página pública da blacklist.
+alter table public.rota_blacklist enable row level security;
+revoke all on public.rota_blacklist from public, anon, authenticated;
+grant select (id, character_name, player_id, photo_url, created_at, is_active) on public.rota_blacklist to anon, authenticated;
+grant all on public.rota_blacklist to service_role;
+drop policy if exists "public can view active ROTA blacklist entries" on public.rota_blacklist;
+create policy "public can view active ROTA blacklist entries" on public.rota_blacklist for select to anon, authenticated using (is_active = true);
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('rota-blacklist-photos', 'rota-blacklist-photos', true, 3145728, array['image/jpeg', 'image/png', 'image/webp'])
