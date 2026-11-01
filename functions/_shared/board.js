@@ -1,5 +1,6 @@
-import { requireStaff, supabase } from "./blacklist.js";
-
+import { clean, json, originError } from "./http.js";
+import { requireStaff } from "./auth.js";
+import { supabase } from "./supabase.js";
 const encoder = new TextEncoder();
 const MAX_BODY_BYTES = 8000;
 const KINDS = ["ops", "inc", "wanted"];
@@ -7,19 +8,6 @@ const OPS_STATUS = ["Programada", "Em andamento", "Concluída"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SELECT = "id,kind,title,zone,leader,status,person,place,detail,created_at";
 
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
-}
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => { const code = character.charCodeAt(0); return code >= 32 || code === 9 || code === 10; }).join("").trim().slice(0, limit);
-}
-function originError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try { if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada."; }
-  catch (_) { return "Origem inválida."; }
-  return null;
-}
 function toRow(row) {
   return { id: row.id, kind: row.kind, title: row.title, zone: row.zone, leader: row.leader, status: row.status, person: row.person, place: row.place, detail: row.detail, createdAt: row.created_at };
 }
@@ -47,7 +35,7 @@ export async function handleBoard(request, env) {
 
     if (request.method === "POST") {
       const kind = KINDS.includes(input.kind) ? input.kind : "";
-      const record = { kind, title: clean(input.title, 120), zone: clean(input.zone, 120), leader: clean(input.leader, 120), person: clean(input.person, 120), place: clean(input.place, 120), detail: clean(input.detail, 2000), status: kind === "ops" ? "Programada" : "", created_by: staff.id };
+      const record = { kind, title: clean(input.title, 120, true), zone: clean(input.zone, 120, true), leader: clean(input.leader, 120, true), person: clean(input.person, 120, true), place: clean(input.place, 120, true), detail: clean(input.detail, 2000, true), status: kind === "ops" ? "Programada" : "", created_by: staff.id };
       if (!kind || record.title.length < 2) return json(400, { error: "Informe o título do registro." });
       if (kind === "ops" && (!record.zone || !record.leader)) return json(400, { error: "Informe a área e o responsável pela operação." });
       if (kind !== "ops" && (!record.person || !record.detail)) return json(400, { error: "Informe o personagem e os detalhes do registro." });
@@ -55,7 +43,7 @@ export async function handleBoard(request, env) {
       return json(201, { row: toRow(rows[0]) });
     }
 
-    const id = clean(input.id, 36);
+    const id = clean(input.id, 36, true);
     if (!UUID.test(id)) return json(400, { error: "Registro inválido." });
     const now = new Date().toISOString();
     const change = request.method === "PATCH"

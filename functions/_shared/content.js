@@ -1,23 +1,11 @@
-import { requireAdmin, supabase } from "./blacklist.js";
-
+import { clean, json, originError } from "./http.js";
+import { requireAdmin } from "./auth.js";
+import { supabase } from "./supabase.js";
 const encoder = new TextEncoder();
 const MAX_BODY_BYTES = 8000;
 const TYPES = ["announcements", "editais"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function json(status, payload) {
-  return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
-}
-function clean(value, limit) {
-  return Array.from(String(value || "")).filter((character) => { const code = character.charCodeAt(0); return code >= 32 || code === 9 || code === 10; }).join("").trim().slice(0, limit);
-}
-function originError(request) {
-  const origin = request.headers.get("origin");
-  if (!origin || origin === "null") return null;
-  try { if (new URL(origin).host.toLowerCase() !== new URL(request.url).host.toLowerCase()) return "Origem não autorizada."; }
-  catch (_) { return "Origem inválida."; }
-  return null;
-}
 function validDateTime(value) {
   const date = new Date(value);
   return value && Number.isFinite(date.getTime()) ? date.toISOString() : "";
@@ -65,19 +53,19 @@ export async function handleContent(request, env) {
 
     if (request.method === "POST") {
       if (input.type === "announcements") {
-        const record = { title: clean(input.title, 120), detail: clean(input.detail, 2000) };
+        const record = { title: clean(input.title, 120, true), detail: clean(input.detail, 2000, true) };
         if (record.title.length < 3 || record.detail.length < 3) return json(400, { error: "Informe o título e a mensagem do comunicado." });
         const rows = await supabase(env, "/rest/v1/rota_announcements?select=id,title,detail,created_at", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(record) });
         return json(201, { row: toAnnouncement(rows[0]) });
       }
-      const record = { title: clean(input.title, 160), summary: clean(input.summary, 1000), opens_at: validDateTime(input.opensAt), closes_at: validDateTime(input.closesAt) };
+      const record = { title: clean(input.title, 160, true), summary: clean(input.summary, 1000, true), opens_at: validDateTime(input.opensAt), closes_at: validDateTime(input.closesAt) };
       if (record.title.length < 3 || !record.opens_at || !record.closes_at) return json(400, { error: "Informe o título, a abertura e o encerramento do edital." });
       if (new Date(record.closes_at) <= new Date(record.opens_at)) return json(400, { error: "O encerramento precisa ser depois da abertura." });
       const rows = await supabase(env, "/rest/v1/rota_editais?select=id,title,summary,opens_at,closes_at,results", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(record) });
       return json(201, { row: toEdital(rows[0]) });
     }
 
-    const id = clean(input.id, 100);
+    const id = clean(input.id, 100, true);
     if (input.type === "announcements" ? !UUID.test(id) : !/^[a-z0-9-]{1,100}$/i.test(id)) return json(400, { error: "Registro inválido." });
     const rows = await supabase(env, "/rest/v1/" + table + "?id=eq." + encodeURIComponent(id) + "&is_active=eq.true&select=id", { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ is_active: false, removed_at: new Date().toISOString() }) });
     if (!Array.isArray(rows) || !rows.length) return json(404, { error: "Registro não encontrado ou já removido." });
