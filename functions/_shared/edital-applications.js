@@ -1,3 +1,5 @@
+import { findEdital } from "./content.js";
+
 const MAX_BODY_BYTES = 24000;
 const encoder = new TextEncoder();
 
@@ -101,6 +103,12 @@ export async function handleEditalApplication(request, env) {
     }
     if (input.action !== "submit") throw fail(400, "Ação inválida.");
     const application = validateApplication(input);
+    // O edital precisa existir e estar aberto agora; o título vem do cadastro, não do navegador.
+    const edital = await findEdital(env, application.editalId);
+    if (!edital) throw fail(404, "Este edital não está disponível.");
+    const now = Date.now();
+    if (now < new Date(edital.opensAt).getTime() || now > new Date(edital.closesAt).getTime()) throw fail(409, "As inscrições deste edital não estão abertas.");
+    application.editalTitle = edital.title;
     const result = await callSupabase(env, "rpc/submit_public_edital_application", {
       p_edital_id: application.editalId,
       p_edital_title: application.editalTitle,

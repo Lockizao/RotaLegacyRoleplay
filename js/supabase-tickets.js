@@ -285,6 +285,14 @@
   async function createBoardEntry(record) { return protectedRequest("/api/board", "POST", record); }
   async function updateBoardStatus(id, status) { return protectedRequest("/api/board", "PATCH", { id: id, status: status }); }
   async function removeBoardEntry(id) { return protectedRequest("/api/board", "DELETE", { id: id }); }
+  async function listContent(type) {
+    var response = await fetch("/api/content?type=" + encodeURIComponent(type), { method: "GET", headers: { Accept: "application/json" } });
+    var body = await response.json().catch(function () { return {}; });
+    if (!response.ok) throw new Error(messageFrom(body, "O serviço não respondeu. Tente atualizar em instantes."));
+    return body.rows || [];
+  }
+  async function publishContent(record) { return protectedRequest("/api/content", "POST", record); }
+  async function removeContent(type, id) { return protectedRequest("/api/content", "DELETE", { type: type, id: id }); }
   async function listRoster() {
     var response = await fetch("/api/roster", { method: "GET", headers: { Accept: "application/json" } });
     var body = await response.json().catch(function () { return {}; });
@@ -332,6 +340,9 @@
     createBoardEntry: createBoardEntry,
     updateBoardStatus: updateBoardStatus,
     removeBoardEntry: removeBoardEntry,
+    listContent: listContent,
+    publishContent: publishContent,
+    removeContent: removeContent,
     listRoster: listRoster,
     saveRoster: saveRoster,
     uploadRosterPhoto: uploadRosterPhoto
