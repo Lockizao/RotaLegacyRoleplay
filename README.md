@@ -18,7 +18,7 @@ O projeto pode continuar publicado no Netlify ou ser implantado no Cloudflare Pa
 3. Em **Settings → Variables and Secrets**, adicione as variáveis e segredos da seção Supabase abaixo para **Production**. Configure Preview também caso vá testar deploys de preview. A URL e a chave pública precisam estar disponíveis no build; os segredos são lidos pelas Functions em runtime.
 4. Faça o deploy e teste primeiro no endereço `*.pages.dev`. Mantenha o Netlify ativo até confirmar login, pedidos de acesso, tickets no celular/PC e a integração opcional com Discord. Só depois aponte um domínio próprio para o Cloudflare.
 
-O build cria `dist/_routes.json` para encaminhar somente `/api/*` às Pages Functions; o conteúdo estático continua sendo servido pela CDN. O Netlify mantém a mesma rota `/api/*` por meio do redirecionamento em `netlify.toml`.
+A pasta `dist/` é gerada pelo build e não fica no repositório (está no `.gitignore`); o Cloudflare Pages e o Netlify rodam `node build.js` a cada deploy. O build também acrescenta `?v=<hash do conteúdo>` aos CSS e JS do `index.html`, então não é preciso mexer em versões para atualizar o cache dos navegadores. O build cria `dist/_routes.json` para encaminhar somente `/api/*` às Pages Functions; o conteúdo estático continua sendo servido pela CDN. O Netlify mantém a mesma rota `/api/*` por meio do redirecionamento em `netlify.toml`.
 
 ### Netlify
 
@@ -86,4 +86,4 @@ Os editais são publicados e removidos pela administração no **Painel policial
 2. Crie um arquivo `.dev.vars` na raiz deste projeto com `SUPABASE_URL` (por exemplo `http://127.0.0.1:54321`), `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `ROTA_ADMIN_USERNAME`, `ROTA_ADMIN_PASSWORD` e `ROTA_SESSION_SECRET`. Os valores do Supabase local aparecem em `npx supabase status`. O `.dev.vars` está no `.gitignore` e nunca deve ser enviado ao GitHub.
 3. Gere o site com essas variáveis (`node build.js`) e rode `npx wrangler pages dev dist --port 8788`.
 
-Endereços `http://` só são aceitos para `localhost` e `127.0.0.1`; em produção a URL do Supabase continua precisando ser `https://`. Não faça commit da pasta `dist/` gerada localmente, porque ela aponta para o Supabase local.
+Endereços `http://` só são aceitos para `localhost` e `127.0.0.1`; em produção a URL do Supabase continua precisando ser `https://`.
