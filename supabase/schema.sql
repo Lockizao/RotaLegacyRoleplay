@@ -45,6 +45,19 @@ create table if not exists public.login_events (
 );
 create index if not exists login_events_logged_at_idx on public.login_events (logged_at desc);
 
+-- Tentativas de login administrativo, usadas para bloquear força bruta.
+-- client_key é um hash do IP (o endereço não é guardado em claro).
+create table if not exists public.admin_login_attempts (
+  id bigint generated always as identity primary key,
+  client_key text not null,
+  succeeded boolean not null,
+  attempted_at timestamptz not null default now()
+);
+create index if not exists admin_login_attempts_recent_idx on public.admin_login_attempts (attempted_at desc, client_key);
+alter table public.admin_login_attempts enable row level security;
+revoke all on public.admin_login_attempts from public, anon, authenticated;
+grant all on public.admin_login_attempts to service_role;
+
 create table if not exists public.ouvidoria_tickets (
   id uuid primary key default gen_random_uuid(),
   public_id text not null unique,
@@ -133,6 +146,35 @@ create trigger enforce_ouvidoria_ticket_decision before update on public.ouvidor
 drop trigger if exists enforce_bo_ticket_decision on public.bo_tickets;
 create trigger enforce_bo_ticket_decision before update on public.bo_tickets
   for each row execute function public.enforce_ticket_decision();
+
+-- Freio contra spam: até 3 pedidos pendentes por passaporte e 20 pedidos por minuto no total, por tabela.
+create or replace function public.limit_ticket_spam()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  pending_for_player integer;
+  last_minute integer;
+begin
+  perform pg_advisory_xact_lock(hashtext(tg_table_name));
+  execute format('select count(*) from public.%I where status = ''Pendente'' and lower(trim(player)) = lower(trim($1))', tg_table_name)
+    into pending_for_player using new.player;
+  if pending_for_player >= 3 then
+    raise exception 'Você já tem 3 pedidos aguardando análise. Aguarde a resposta da equipe antes de enviar outro.' using errcode = 'check_violation';
+  end if;
+  execute format('select count(*) from public.%I where created_at > now() - interval ''1 minute''', tg_table_name)
+    into last_minute;
+  if last_minute >= 20 then
+    raise exception 'Muitos pedidos chegando agora. Tente novamente em alguns minutos.' using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.limit_ticket_spam() from public, anon, authenticated;
+drop trigger if exists limit_ouvidoria_ticket_spam on public.ouvidoria_tickets;
+create trigger limit_ouvidoria_ticket_spam before insert on public.ouvidoria_tickets
+  for each row execute function public.limit_ticket_spam();
+drop trigger if exists limit_bo_ticket_spam on public.bo_tickets;
+create trigger limit_bo_ticket_spam before insert on public.bo_tickets
+  for each row execute function public.limit_ticket_spam();
 
 drop policy if exists "police can read own membership" on public.police_users;
 create policy "police can read own membership" on public.police_users for select to authenticated

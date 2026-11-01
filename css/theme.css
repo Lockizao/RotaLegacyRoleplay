@@ -457,3 +457,5 @@ html[data-theme="light"] #app .city-connect :is(h2,p,label,strong,b,small,code,s
 html[data-theme="light"] #app .city-connect .kicker,html[data-theme="dark"] #app .city-connect .kicker{color:#f0ca67!important}
 html[data-theme="light"] #app .city-connect .city-server-copy code,html[data-theme="dark"] #app .city-connect .city-server-copy code{color:#f0d37c!important}
 html[data-theme="light"] #app .city-connect .city-status,html[data-theme="dark"] #app .city-connect .city-status{color:#c5d0de!important}
+#app .ticket-key{margin:16px 0;padding:14px 16px;font-size:13px;line-height:1.5}#app .ticket-key p{margin:6px 0}#app .ticket-key code{display:inline-block;max-width:100%;word-break:break-all;font-size:12px}#app .ticket-key button{margin-top:8px}#app .ticket-lookup{margin-top:20px}
+#app .inbox-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}#app .inbox-toolbar input{flex:1 1 260px;min-width:0}#app .inbox-toolbar select{flex:0 0 auto}#app .inbox-toolbar span{font-size:12px;opacity:.75}#app .inbox-more{display:block;margin:18px auto 0}
