@@ -186,8 +186,36 @@ async function officerLogin(env, input) {
   return { session };
 }
 
-async function adminLogin(env, input) {
+const ADMIN_LOCK_MINUTES = 15;
+const ADMIN_MAX_FAILURES_PER_CLIENT = 5;
+const ADMIN_MAX_FAILURES_TOTAL = 30;
+
+async function adminClientKey(request, env) {
+  const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "local";
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(String(env.ROTA_SESSION_SECRET || "") + "|" + ip.split(",")[0].trim()));
+  return encodeBase64Url(new Uint8Array(digest)).slice(0, 32);
+}
+
+// Bloqueia novas tentativas depois de muitos erros recentes, por IP e no total
+// (o limite total cobre quem troca de IP a cada tentativa).
+async function assertAdminNotLocked(env, clientKey) {
+  const since = new Date(Date.now() - ADMIN_LOCK_MINUTES * 60 * 1000).toISOString();
+  let failures;
+  try {
+    failures = await db(env, "admin_login_attempts?select=client_key&succeeded=eq.false&attempted_at=gte." + encodeURIComponent(since) + "&limit=" + ADMIN_MAX_FAILURES_TOTAL, "GET");
+  } catch (_) {
+    throw fail("Login administrativo indisponível: execute o supabase/schema.sql atualizado no Supabase.", 503);
+  }
+  const rows = Array.isArray(failures) ? failures : [];
+  if (rows.length >= ADMIN_MAX_FAILURES_TOTAL || rows.filter((row) => row.client_key === clientKey).length >= ADMIN_MAX_FAILURES_PER_CLIENT) {
+    throw fail("Muitas tentativas de login. Aguarde " + ADMIN_LOCK_MINUTES + " minutos e tente novamente.", 429);
+  }
+}
+
+async function adminLogin(env, input, request) {
   config(env);
+  const clientKey = await adminClientKey(request, env);
+  await assertAdminNotLocked(env, clientKey);
   const expectedUser = String(env.ROTA_ADMIN_USERNAME || "");
   const expectedPassword = String(env.ROTA_ADMIN_PASSWORD || "");
   if (expectedPassword.length < 12) throw fail("Defina uma senha administrativa forte na variável ROTA_ADMIN_PASSWORD.", 503);
@@ -198,7 +226,9 @@ async function adminLogin(env, input) {
   let difference = submittedPassword.length ^ expectedBuffer.length;
   const length = Math.max(submittedPassword.length, expectedBuffer.length);
   for (let i = 0; i < length; i++) difference |= (submittedPassword[i] || 0) ^ (expectedBuffer[i] || 0);
-  if (!userOk || difference !== 0) throw fail("Usuário ou senha administrativa incorretos.", 401);
+  const succeeded = userOk && difference === 0;
+  await db(env, "admin_login_attempts", "POST", { client_key: clientKey, succeeded }, "return=minimal");
+  if (!succeeded) throw fail("Usuário ou senha administrativa incorretos.", 401);
   const now = Math.floor(Date.now() / 1000);
   return { adminToken: await signAdmin(env, { role: "admin", iat: now, exp: now + SESSION_SECONDS }) };
 }
@@ -226,7 +256,13 @@ async function dashboard(env) {
     dashboardRows(env, "efetivo ROTA", "rota_roster?select=id,qra,full_name,rank,passport,admitted_on,birth_date,status,photo_path,photo_url,created_at,updated_at&order=qra.asc&limit=500", issues),
   ]);
 
-  return { requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, dataIssues: issues };
+  // As listas acima são só as mais recentes; a contagem de pendentes considera todos os tickets.
+  const [pendingBo, pendingOuvidoria] = await Promise.all([
+    dashboardRows(env, "B.O. pendentes", "bo_tickets?select=id&status=eq.Pendente&limit=10000", issues),
+    dashboardRows(env, "Ouvidoria pendente", "ouvidoria_tickets?select=id&status=eq.Pendente&limit=10000", issues)
+  ]);
+
+  return { requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues };
 }
 
 async function issueForOfficer(env, userId, reactivate) {
@@ -320,7 +356,7 @@ export async function handlePoliceAccess(request, env) {
     if (input.action === "request-access") result = await createAccessRequest(env, input, "acesso");
     else if (input.action === "request-reset") result = await createAccessRequest(env, input, "troca_token");
     else if (input.action === "officer-login") result = await officerLogin(env, input);
-    else if (input.action === "admin-login") result = await adminLogin(env, input);
+    else if (input.action === "admin-login") result = await adminLogin(env, input, request);
     else result = await handleAdmin(request, env, input);
     return json(200, result || { ok: true });
   } catch (error) {
