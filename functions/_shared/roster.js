@@ -28,7 +28,7 @@ function toRow(row) {
 }
 function photoUrl(env, path) {
   const url = String(env.SUPABASE_URL || "").trim().replace(/\/$/, "");
-  if (!/^https:\/\//i.test(url)) throw fail("O administrador precisa configurar as variáveis Supabase na hospedagem.", 503);
+  if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url)) throw fail("O administrador precisa configurar as variáveis Supabase na hospedagem.", 503);
   return url + "/storage/v1/object/public/" + PHOTO_BUCKET + "/" + path;
 }
 function validPhotoPath(value) {
@@ -92,7 +92,7 @@ export async function handleRosterPhoto(request, env) {
     const valid = (mime === "image/jpeg" && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) || (mime === "image/png" && bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) || (mime === "image/webp" && bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP");
     if (!valid) return json(400, { error: "O arquivo não parece ser uma imagem válida." });
     const base = String(env.SUPABASE_URL || "").trim().replace(/\/$/, ""), path = crypto.randomUUID() + "." + ext;
-    if (!/^https:\/\//i.test(base)) throw fail("O administrador precisa configurar as variáveis Supabase na hospedagem.", 503);
+    if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(base)) throw fail("O administrador precisa configurar as variáveis Supabase na hospedagem.", 503);
     const secret = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
     if (!secret) throw fail("Configure a chave secreta do Supabase nas Functions.", 503);
     const headers = { apikey: secret, "Content-Type": mime, "cache-control": "public, max-age=31536000, immutable", "x-upsert": "false" };

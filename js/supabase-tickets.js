@@ -19,7 +19,7 @@
     else sessionStorage.removeItem(SESSION_KEY);
   }
   function isConfigured() {
-    return /^https:\/\//i.test(url) && !!key && !/COLE_AQUI|SUA_CHAVE/i.test(key);
+    return /^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) && !!key && !/COLE_AQUI|SUA_CHAVE/i.test(key);
   }
   function isAdmin() {
     return !!(current && current.access_token === "admin" && adminToken);
@@ -31,12 +31,14 @@
     Object.keys(extra || {}).forEach(function (name) { result[name] = extra[name]; });
     return result;
   }
+  // Só usa mensagens em texto; respostas de erro fora do padrão (ex.: 404 do servidor) viram o texto padrão.
+  function messageFrom(body, fallback) {
+    var found = [body && body.message, body && body.msg, body && body.error_description, body && body.error].find(function (value) { return typeof value === "string" && value.trim(); });
+    return found || fallback;
+  }
   async function responseData(response) {
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) {
-      var reason = body.message || body.msg || body.error_description || body.error || "Erro na comunicação com o serviço.";
-      throw new Error(reason);
-    }
+    if (!response.ok) throw new Error(messageFrom(body, "Erro na comunicação com o serviço."));
     return body;
   }
   async function functionCall(action, values, admin) {
@@ -135,7 +137,7 @@
     });
     var body = await response.json().catch(function () { return {}; });
     if (!response.ok) {
-      var error = new Error(body.error || "Não foi possível processar a candidatura.");
+      var error = new Error(messageFrom(body, "Não foi possível processar a candidatura."));
       error.status = response.status;
       error.availableAt = body.availableAt || null;
       error.remainingSeconds = body.remainingSeconds || 0;
@@ -174,7 +176,7 @@
     };
   }
   async function submit(kind, details) {
-    if (!isConfigured()) throw new Error("O banco ainda não foi configurado. Preencha a URL e a chave publishable em js/supabase-config.js.");
+    if (!isConfigured()) throw new Error("O atendimento online está indisponível no momento. Tente novamente mais tarde ou procure a ROTA no Discord da cidade.");
     var isBo = kind === "bo", table = tableFor(kind);
     var record = {
       public_id: (isBo ? "BO-" : "OUV-") + makeToken(), tracking_token: makeTrackingToken(),
@@ -213,7 +215,7 @@
       return rowToTicket(adminResult.row, kind);
     }
     var table = tableFor(kind);
-    var query = "/rest/v1/" + table + "?public_id=eq." + encodeURIComponent(publicId) + "&status=eq.Pendente";
+    var query = "/rest/v1/" + table + "?select=id,public_id,discord,player,legacy_name,reason,category,detail,status,created_at,decision_at&public_id=eq." + encodeURIComponent(publicId) + "&status=eq.Pendente";
     var rows = await responseData(await authedFetch(query, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status: status, decision_at: new Date().toISOString() }) }));
     if (!Array.isArray(rows) || !rows.length) throw new Error("O ticket já foi decidido ou não está mais disponível.");
     return rowToTicket(rows[0], kind);
@@ -225,7 +227,7 @@
     else if (current && current.access_token && current.access_token !== "admin") headers.Authorization = "Bearer " + current.access_token;
     var response = await fetch(endpoint, { method: method, headers: headers, body: payload ? JSON.stringify(payload) : undefined });
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(body.error || "Falha ao acessar o servidor.");
+    if (!response.ok) throw new Error(messageFrom(body, "Falha ao acessar o servidor."));
     return body;
   }
   async function optimizeBlacklistPhoto(file) {
@@ -258,7 +260,7 @@
     var headers = { "x-rota-admin-session": adminToken };
     var response = await fetch("/api/blacklist-photo", { method: "POST", headers: headers, body: form });
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(body.error || "Falha ao enviar a foto.");
+    if (!response.ok) throw new Error(messageFrom(body, "Falha ao enviar a foto."));
     return body;
   }
   async function listBlacklist() { var result = await protectedRequest("/api/blacklist", "GET"); return result.rows || []; }
@@ -275,14 +277,14 @@
     else if (current.access_token) headers.Authorization = "Bearer " + current.access_token;
     var response = await fetch("/api/arrest-photo", { method: "POST", headers: headers, body: form });
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(body.error || "Falha ao enviar a foto da apreensão.");
+    if (!response.ok) throw new Error(messageFrom(body, "Falha ao enviar a foto da apreensão."));
     return body;
   }
   async function removeArrest(id) { return protectedRequest("/api/arrests", "DELETE", { id: id }); }
   async function listRoster() {
     var response = await fetch("/api/roster", { method: "GET", headers: { Accept: "application/json" } });
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(body.error || "Não foi possível carregar o efetivo.");
+    if (!response.ok) throw new Error(messageFrom(body, "O serviço não respondeu. Tente atualizar em instantes."));
     return body.rows || [];
   }
   async function saveRoster(record) { return protectedRequest("/api/roster", "POST", record); }
@@ -292,7 +294,7 @@
     form.append("photo", optimized);
     var response = await fetch("/api/roster-photo", { method: "POST", headers: { "x-rota-admin-session": adminToken }, body: form });
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(body.error || "Falha ao enviar a foto.");
+    if (!response.ok) throw new Error(messageFrom(body, "Falha ao enviar a foto."));
     return body;
   }
 

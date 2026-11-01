@@ -24,7 +24,7 @@ async function hashPlayerId(value) {
 function config(env) {
   const url = String(env.SUPABASE_URL || "").trim().replace(/\/$/, "");
   const key = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-  if (!/^https:\/\//i.test(url) || !key) throw fail(503, "O servidor ainda não está conectado ao Supabase. Avise a equipe da ROTA.");
+  if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) || !key) throw fail(503, "O servidor ainda não está conectado ao Supabase. Avise a equipe da ROTA.");
   return { url, key };
 }
 function originError(request) {

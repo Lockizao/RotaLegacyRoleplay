@@ -53,7 +53,7 @@ function config(env) {
   const url = String(env.SUPABASE_URL || "").trim().replace(/\/$/, "");
   const serviceKey = String(env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
   const publicKey = String(env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "").trim();
-  if (!/^https:\/\//i.test(url) || !serviceKey || !publicKey) {
+  if (!/^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) || !serviceKey || !publicKey) {
     throw new Error("O administrador precisa configurar as variáveis Supabase na hospedagem.");
   }
   return { url, serviceKey, publicKey };

@@ -20,7 +20,7 @@ function readPublicSetting(name) {
 const supabaseUrl = String(process.env.SUPABASE_URL || readPublicSetting("url")).trim().replace(/\/$/, "");
 const publishableKey = String(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || readPublicSetting("publishableKey")).trim();
 const publicConfig = {
-  url: /^https:\/\//i.test(supabaseUrl) ? supabaseUrl : "",
+  url: /^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(supabaseUrl) ? supabaseUrl : "",
   publishableKey: publishableKey && !/service_role|sb_secret_/i.test(publishableKey) ? publishableKey : ""
 };
 fs.writeFileSync(
