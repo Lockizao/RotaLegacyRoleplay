@@ -259,10 +259,10 @@ dialog#modal .form{padding:24px}
 .front-photo>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:46% 30%}
 .front-photo::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(13,15,17,.97) 0%,rgba(13,15,17,.82) 30%,rgba(13,15,17,0) 62%)}
 .formacao{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:22px 24px 24px;display:flex;flex-direction:column;gap:14px}
-.formacao::before{content:"";display:block;height:10px;margin:0 -24px 6px;background:linear-gradient(var(--demarcacao),var(--demarcacao)) 0 100%/100% 2px no-repeat,repeating-linear-gradient(90deg,var(--demarcacao) 0 2px,transparent 2px 24px) 0 0/100% 10px no-repeat}
+.formacao::before{content:"";display:block;height:2px;margin:0 -24px 10px;background:var(--demarcacao)}
 .formacao-grid{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
 .formacao-marks{display:grid;grid-template-columns:repeat(10,12px);gap:9px 7px}
-.formacao-marks i{display:block;width:12px;height:16px;background:var(--faixa);border-radius:2px 2px 0 0;border-bottom:3px solid var(--demarcacao)}
+.formacao-marks i{display:block;width:12px;height:16px;background:linear-gradient(var(--faixa) 0 calc(100% - 4px),transparent 0 calc(100% - 3px),var(--demarcacao) 0)}
 .formacao-more{font:700 18px/1 var(--stencil);color:var(--faixa)}
 .formacao-label{color:var(--texto);font-size:15px}
 .formacao-label b{font:700 34px/1 var(--stencil);color:var(--faixa);margin-right:4px;vertical-align:-3px}
