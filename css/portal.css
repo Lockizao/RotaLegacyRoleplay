@@ -249,6 +249,8 @@ dialog#modal .form{padding:24px}
 .ordem::before{content:"";position:absolute;top:-2px;left:0;width:72px;height:3px;background:var(--demarcacao)}
 .ordem h2{font:800 22px/1 var(--display);text-transform:uppercase;letter-spacing:.06em;color:var(--demarcacao-texto);margin-bottom:12px}
 .ordem-meta{display:flex;align-items:center;gap:8px;color:var(--nevoa);font-size:14px;margin:0 0 6px}
+.ordem-meta span::before{content:"·";margin-right:8px}
+.ordem:not(.is-today) h2{color:var(--texto)}
 .ordem h3{font:700 clamp(26px,2.4vw,32px)/1.05 var(--display);margin-bottom:8px}
 .ordem-text{color:var(--texto);margin:0 0 10px;max-width:60ch;white-space:pre-line}
 .ordem-text.is-clamped{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -263,9 +265,9 @@ dialog#modal .form{padding:24px}
 .formacao-grid{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
 .formacao-marks{display:grid;grid-template-columns:repeat(10,12px);gap:9px 7px}
 .formacao-marks i{display:block;width:12px;height:16px;background:linear-gradient(var(--faixa) 0 calc(100% - 4px),transparent 0 calc(100% - 3px),var(--demarcacao) 0)}
-.formacao-more{font:700 18px/1 var(--stencil);color:var(--faixa)}
+.formacao-more{font:800 18px/1 var(--display);color:var(--faixa)}
 .formacao-label{color:var(--texto);font-size:15px}
-.formacao-label b{font:700 34px/1 var(--stencil);color:var(--faixa);margin-right:4px;vertical-align:-3px}
+.formacao-label b{font:800 34px/1 var(--display);color:var(--faixa);margin-right:4px;vertical-align:-3px}
 .destinos{margin-top:96px}
 .destinos>h2{margin-bottom:20px}
 .destinos-linha{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--friso);border-bottom:1px solid var(--friso)}
@@ -556,7 +558,7 @@ dialog#modal .form{padding:24px}
 .roster-toolbar select{width:auto;min-width:180px}
 .roster-toolbar span{color:var(--nevoa);font-size:14px}
 .roster-table-wrap{overflow-x:auto}
-.roster-qra{font:700 18px var(--stencil);letter-spacing:.02em;color:var(--faixa)}
+.roster-qra{font:800 18px var(--display);letter-spacing:.02em;color:var(--faixa)}
 .roster-name-cell,.roster-rank-cell{display:flex;align-items:center;gap:12px}
 .roster-name-cell b,.roster-rank-cell b{color:var(--faixa);font-weight:600}
 .roster-thumb{width:40px;height:40px;border-radius:var(--r-s);object-fit:cover;flex:none}
@@ -643,7 +645,7 @@ dialog#modal .form{padding:24px}
 .support-ticket-state{font-size:13px;color:var(--nevoa)}
 .support-decision-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:auto;padding-top:12px;border-top:1px solid var(--friso)}
 .support-admin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
-.ticket-sync-banner,.command-notice{font-size:14px}
+.ticket-sync-banner{font-size:14px}
 
 /* prisões */
 .arrest-record-list{display:flex;flex-direction:column;gap:16px}
@@ -674,9 +676,6 @@ dialog#modal .form{padding:24px}
 .seizure-not-counted{color:var(--nevoa);font-size:13px}
 .exception-check,.conditional{font-size:14px}
 
-/* operações (arte antiga do card) */
-.operation-art,.home-feature,.home-module-grid{display:none}
-.operation-details{display:flex;flex-direction:column;gap:8px}
 
 /* ================= ADMINISTRAÇÃO ================= */
 .admin-refresh{flex:none}
@@ -757,10 +756,6 @@ dialog#modal .form{padding:24px}
   .nav-who{padding:0 12px}
 }
 @media (max-width:1099px){
-  .home-services{grid-template-columns:1fr 1fr}
-  .home-service:first-child{grid-column:1/-1;border-bottom:1px solid var(--friso)}
-  .home-service:nth-child(2){border-left:0;padding-left:0}
-  .home-news{grid-template-columns:1fr}
   .home-subs{grid-template-columns:1fr 1fr}
   .penal-layout{grid-template-columns:1fr}
   .penal-calculator{position:static;max-height:none}
@@ -772,21 +767,6 @@ dialog#modal .form{padding:24px}
   :root{--gutter:16px}
   html{font-size:16px}
   #app{padding-top:28px}
-  #app>.home-hero{margin-top:-28px}
-  .home-hero{min-height:600px}
-  .home-hero::before{background:linear-gradient(0deg,var(--asfalto) 32%,rgba(18,20,23,.6) 70%,rgba(18,20,23,.25))}
-  .home-hero>img{object-position:72% 40%}
-  .home-hero-in{padding-bottom:40px}
-  .home-hero p{font-size:17px}
-  .home-hero-actions button{flex:1 1 100%}
-  .home-status{grid-template-columns:1fr}
-  .home-status>div+div{border-left:0;border-top:1px solid var(--friso);padding-left:0}
-  .home-status>div{padding:16px 0}
-  .home-block{padding-top:64px}
-  .home-services{grid-template-columns:1fr}
-  .home-service,.home-service+.home-service{padding:22px 0;border-left:0;border-top:1px solid var(--friso)}
-  .home-service:first-child{border-top:0;border-bottom:0}
-  .home-notice{grid-template-columns:1fr;gap:4px}
   .footer-grid{grid-template-columns:1fr 1fr}
   .footer-about{grid-column:1/-1}
   .form,.arrest-form-grid,.application-personal-grid,.support-ticket-fields{grid-template-columns:1fr}
@@ -864,11 +844,6 @@ dialog#modal .form{padding:24px}
 .footer-brand img{width:auto;height:32px}
 .access-crest-wrap img{width:auto;height:76px}
 .roster-id-card header img{width:auto;height:40px}
-@media (max-width:760px){
-  .home-hero{min-height:0;padding-top:250px}
-  .home-hero>img{height:330px;object-position:58% 62%}
-  .home-hero::before{background:linear-gradient(0deg,var(--asfalto) 0,var(--asfalto) calc(100% - 330px),rgba(18,20,23,.55) calc(100% - 200px),rgba(18,20,23,.05) 100%)}
-}
 /* comunicados: lista + coluna de apoio */
 .notice-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:48px;align-items:start}
 .notice-layout .notice-list{max-width:none}
