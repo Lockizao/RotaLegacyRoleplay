@@ -171,7 +171,7 @@ legend{font:600 15px var(--body);color:var(--faixa);padding:0 6px}
 .panelhead{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:18px 24px;border-bottom:1px solid var(--friso)}
 .panelhead h2{font-size:28px}
 .panelhead p{margin:6px 0 0;color:var(--nevoa);font-size:15px}
-.notice{background:var(--chassi);border:1px solid var(--friso);border-left:3px solid var(--pendente);border-radius:var(--r-s);padding:14px 16px;margin-bottom:20px;font-size:15px;color:var(--texto)}
+.notice{background:rgba(230,173,69,.07);border:1px solid rgba(230,173,69,.32);border-radius:var(--r-s);padding:14px 16px;margin-bottom:20px;font-size:15px;color:var(--texto)}
 .notice b{color:var(--faixa)}
 .notice p{margin:4px 0}
 .empty{color:var(--nevoa);text-align:center;padding:36px 20px;font-size:15px}
@@ -214,7 +214,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 
 /* protocolo como prefixo de viatura */
 .ticket-key code,.arrest-record-id,.issued-token code{font-family:var(--display);font-weight:700;letter-spacing:.03em}
-.ticket-key{border-left-color:var(--radio)}
+.ticket-key{background:rgba(70,196,134,.07);border-color:rgba(70,196,134,.35)}
 .ticket-key code{display:block;margin-top:6px;font-size:15px}
 .ticket-key button{margin-top:10px}
 .issued-token{background:var(--chassi);border:1px solid var(--radio);border-radius:var(--r-m);padding:18px 20px;margin-bottom:24px;display:grid;gap:10px}
@@ -451,7 +451,7 @@ dialog#modal .form{padding:24px}
 .recruitment-selected{border:1px solid var(--friso);border-radius:var(--r-s);padding:12px 14px;margin-bottom:12px}
 
 /* ================= CÓDIGO PENAL ================= */
-.penal-notice{background:var(--chassi);border-left:3px solid var(--pendente);border-radius:var(--r-s);padding:12px 16px;margin-bottom:20px;font-size:14px;color:var(--texto)}
+.penal-notice{background:rgba(230,173,69,.07);border:1px solid rgba(230,173,69,.32);border-radius:var(--r-s);padding:12px 16px;margin-bottom:20px;font-size:14px;color:var(--texto)}
 .penal-notice:empty{display:none}
 .penal-layout>*{min-width:0}
 .penal-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:24px;align-items:start}
@@ -511,12 +511,12 @@ dialog#modal .form{padding:24px}
 .robbery-exclusion{border-top:1px solid var(--friso);padding-top:10px}
 .robbery-exclusion b{color:var(--faixa);font-size:15px}
 .robbery-exclusion p{color:var(--nevoa);margin:4px 0 0;font-size:15px}
-.robbery-note{background:var(--chassi);border-left:3px solid var(--sirene);border-radius:var(--r-s);padding:16px 18px}
+.robbery-note{background:rgba(211,38,46,.07);border:1px solid rgba(211,38,46,.35);border-radius:var(--r-s);padding:16px 18px}
 .robbery-note b{color:var(--faixa)}
 .robbery-note p{margin:4px 0 0;color:var(--nevoa)}
 
 /* ================= BLACKLIST ================= */
-.blacklist-disclaimer{border-left-color:var(--sirene)}
+.blacklist-disclaimer{background:rgba(211,38,46,.07);border-color:rgba(211,38,46,.35)}
 .blacklist-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding:18px 24px;border-bottom:1px solid var(--friso)}
 .blacklist-toolbar label{flex:1;max-width:460px;font-size:0;gap:0}
 .blacklist-toolbar label input{font-size:16px}
