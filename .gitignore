@@ -6,3 +6,8 @@ node_modules/
 
 # Gerado por node build.js (o Cloudflare Pages e o Netlify rodam o build no deploy)
 dist/
+
+# Documentos e ferramentas internas de design (ficam fora do repositório)
+.impeccable/
+PRODUCT.md
+DESIGN.md
