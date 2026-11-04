@@ -848,3 +848,12 @@ dialog#modal .form{padding:24px}
   .home-hero>img{height:330px;object-position:58% 62%}
   .home-hero::before{background:linear-gradient(0deg,var(--asfalto) 0,var(--asfalto) calc(100% - 330px),rgba(18,20,23,.55) calc(100% - 200px),rgba(18,20,23,.05) 100%)}
 }
+/* comunicados: lista + coluna de apoio */
+.notice-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:48px;align-items:start}
+.notice-layout .notice-list{max-width:none}
+.notice-aside{display:flex;flex-direction:column;gap:20px;position:sticky;top:calc(var(--bar-h) + 24px)}
+.notice-help{border:1px solid var(--friso);border-radius:var(--r-m);padding:22px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.notice-help h3{font:700 24px/1.1 var(--display)}
+.notice-help p{color:var(--nevoa);font-size:15px;margin:0 0 4px}
+.notice-layout>.notice-list>.empty{border:1px dashed var(--friso-forte);border-radius:var(--r-m);text-align:left}
+@media (max-width:1099px){.notice-layout{grid-template-columns:1fr}.notice-aside{position:static}}
