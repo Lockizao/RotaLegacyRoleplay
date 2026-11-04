@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-color",
+        "value": "#fff",
+        "files": [
+          "css/portal.css"
+        ],
+        "createdAt": "2026-11-04T04:22:21.197Z",
+        "reason": "Claude: só na folha de impressão (@media print), papel branco é intencional"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#000",
+        "files": [
+          "css/portal.css"
+        ],
+        "createdAt": "2026-11-04T04:22:21.445Z",
+        "reason": "Claude: só na folha de impressão (@media print), texto preto no papel é intencional"
+      }
+    ]
+  }
+}
