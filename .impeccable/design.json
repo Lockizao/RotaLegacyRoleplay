@@ -1,0 +1,466 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-04T04:22:09.900Z",
+  "title": "Design System: ROTA · Ronda Ostensiva Tobias de Aguiar (RP)",
+  "extensions": {
+    "colorMeta": {
+      "asfalto": {
+        "role": "neutral",
+        "displayName": "Asfalto",
+        "tonalRamp": [
+          "#0a0c0d",
+          "#101214",
+          "#15181b",
+          "#1d2125",
+          "#272c31",
+          "#353b42",
+          "#4b525b",
+          "#6b737c"
+        ]
+      },
+      "chassi": {
+        "role": "neutral",
+        "displayName": "Chassi (concreto)",
+        "tonalRamp": [
+          "#0d0f11",
+          "#15181b",
+          "#1d2125",
+          "#272c31",
+          "#353b42",
+          "#4b525b",
+          "#6b737c",
+          "#9ea4ab"
+        ]
+      },
+      "lataria": {
+        "role": "neutral",
+        "displayName": "Lataria",
+        "tonalRamp": [
+          "#15181b",
+          "#1d2125",
+          "#272c31",
+          "#353b42",
+          "#4b525b",
+          "#6b737c",
+          "#9ea4ab",
+          "#d7d9db"
+        ]
+      },
+      "friso": {
+        "role": "neutral",
+        "displayName": "Friso (junta)",
+        "tonalRamp": [
+          "#1d2125",
+          "#272c31",
+          "#353b42",
+          "#4b525b",
+          "#5f6670",
+          "#7d838b",
+          "#9ea4ab",
+          "#d7d9db"
+        ]
+      },
+      "friso-forte": {
+        "role": "neutral",
+        "displayName": "Friso forte",
+        "tonalRamp": [
+          "#272c31",
+          "#353b42",
+          "#4b525b",
+          "#5f6670",
+          "#7d838b",
+          "#9ea4ab",
+          "#d7d9db",
+          "#f2f1ec"
+        ]
+      },
+      "faixa": {
+        "role": "neutral",
+        "displayName": "Giz",
+        "tonalRamp": [
+          "#4b4a46",
+          "#6e6c66",
+          "#8f8d86",
+          "#b0aea7",
+          "#cfcdc6",
+          "#e2e1dc",
+          "#f2f1ec",
+          "#fbfbf8"
+        ]
+      },
+      "texto": {
+        "role": "neutral",
+        "displayName": "Texto",
+        "tonalRamp": [
+          "#3a3d40",
+          "#56595c",
+          "#76797c",
+          "#9a9da0",
+          "#bcbfc1",
+          "#d7d9db",
+          "#e7e8e9",
+          "#f5f6f6"
+        ]
+      },
+      "nevoa": {
+        "role": "neutral",
+        "displayName": "Névoa",
+        "tonalRamp": [
+          "#2e3236",
+          "#464b51",
+          "#626870",
+          "#7d838b",
+          "#9ea4ab",
+          "#bcc0c5",
+          "#d6d9dc",
+          "#eef0f1"
+        ]
+      },
+      "demarcacao": {
+        "role": "primary",
+        "displayName": "Amarelo de Demarcação",
+        "tonalRamp": [
+          "#3d2f05",
+          "#6b520a",
+          "#a17c12",
+          "#d4a51f",
+          "#f2c230",
+          "#ffd451",
+          "#f5cf55",
+          "#fdf0c4"
+        ]
+      },
+      "demarcacao-forte": {
+        "role": "primary",
+        "displayName": "Demarcação (hover)",
+        "tonalRamp": [
+          "#3d2f05",
+          "#6b520a",
+          "#a17c12",
+          "#d4a51f",
+          "#f2c230",
+          "#ffd451",
+          "#ffe28a",
+          "#fff4cf"
+        ]
+      },
+      "demarcacao-texto": {
+        "role": "primary",
+        "displayName": "Demarcação (texto)",
+        "tonalRamp": [
+          "#3d2f05",
+          "#6b520a",
+          "#a17c12",
+          "#d4a51f",
+          "#f2c230",
+          "#f5cf55",
+          "#f9e08f",
+          "#fdf0c4"
+        ]
+      },
+      "radio": {
+        "role": "secondary",
+        "displayName": "Verde Rádio",
+        "tonalRamp": [
+          "#0d2a1c",
+          "#15452e",
+          "#1f6643",
+          "#2f8f5e",
+          "#4cc78a",
+          "#79d6a7",
+          "#a9e5c6",
+          "#daf4e6"
+        ]
+      },
+      "sirene": {
+        "role": "tertiary",
+        "displayName": "Vermelho Sirene",
+        "tonalRamp": [
+          "#2e0709",
+          "#560c10",
+          "#8a141a",
+          "#b11d24",
+          "#d3262e",
+          "#e85358",
+          "#ff7a7e",
+          "#ffd3d4"
+        ]
+      },
+      "sirene-texto": {
+        "role": "tertiary",
+        "displayName": "Sirene (texto)",
+        "tonalRamp": [
+          "#2e0709",
+          "#560c10",
+          "#8a141a",
+          "#b11d24",
+          "#d3262e",
+          "#ff7a7e",
+          "#ffa5a7",
+          "#ffd3d4"
+        ]
+      },
+      "pendente": {
+        "role": "tertiary",
+        "displayName": "Laranja Pendente",
+        "tonalRamp": [
+          "#331a05",
+          "#5c300a",
+          "#8f4c12",
+          "#c66d22",
+          "#f0913a",
+          "#f5ad6a",
+          "#f9c99c",
+          "#fde6d0"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Letreiro de comando",
+        "purpose": "Só o título de comando da home, em caixa alta."
+      },
+      "headline": {
+        "displayName": "Título de página",
+        "purpose": "h1 do cabeçalho de página, sobre a linha amarela pintada."
+      },
+      "title": {
+        "displayName": "Título de seção",
+        "purpose": "h2 de seções e painéis."
+      },
+      "numeral": {
+        "displayName": "Numeral em estêncil",
+        "purpose": "Números de posição, etapas, métricas e pena total; somente a partir de 40px."
+      },
+      "subtitle": {
+        "displayName": "Subtítulo",
+        "purpose": "h3/h4 em cartões e linhas."
+      },
+      "body": {
+        "displayName": "Corpo",
+        "purpose": "Texto corrido; 16px abaixo de 760px."
+      },
+      "label": {
+        "displayName": "Rótulo",
+        "purpose": "Botões, rótulos de campo, navegação, cabeçalhos de tabela."
+      },
+      "caption": {
+        "displayName": "Legenda",
+        "purpose": "Datas, contagens e dicas, em névoa."
+      }
+    },
+    "shadows": [
+      {
+        "name": "submenu",
+        "value": "0 14px 34px rgba(0,0,0,.45)",
+        "purpose": "Submenu da navegação aberto."
+      },
+      {
+        "name": "menu-movel",
+        "value": "0 20px 40px rgba(0,0,0,.5)",
+        "purpose": "Navegação recolhida aberta."
+      },
+      {
+        "name": "modal",
+        "value": "0 30px 80px rgba(0,0,0,.6)",
+        "purpose": "Janela modal sobre fundo rgba(6,7,9,.72) com blur de 3px."
+      },
+      {
+        "name": "toast",
+        "value": "0 12px 30px rgba(0,0,0,.5)",
+        "purpose": "Aviso em giz no rodapé da tela."
+      },
+      {
+        "name": "foco-campo",
+        "value": "0 0 0 3px rgba(242,194,48,.18)",
+        "purpose": "Anel de foco de campo, com borda em amarelo."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(.16,1,.3,1)",
+        "purpose": "Curva de todas as entradas e deslizes."
+      },
+      {
+        "name": "estado",
+        "value": "150ms",
+        "purpose": "Transição de cor, borda e fundo em controles."
+      },
+      {
+        "name": "chega",
+        "value": "360ms, de opacity .55 e translateY(6px)",
+        "purpose": "Chegada de página; não repete em re-renderização de dados."
+      },
+      {
+        "name": "pinta",
+        "value": "600ms, atraso 80ms, de scaleX(0)",
+        "purpose": "Linha amarela sob o cabeçalho e sobre a Ordem do dia sendo pintada."
+      },
+      {
+        "name": "forma",
+        "value": "500ms, atraso 120ms + 14ms por item",
+        "purpose": "Marcadores do efetivo entrando em forma na home."
+      },
+      {
+        "name": "abre",
+        "value": "160ms",
+        "purpose": "Abertura do submenu."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compacto",
+        "value": "400px"
+      },
+      {
+        "name": "celular",
+        "value": "760px"
+      },
+      {
+        "name": "tablet",
+        "value": "1099px"
+      },
+      {
+        "name": "menu-recolhido",
+        "value": "1199px"
+      },
+      {
+        "name": "menu-lateral-policial",
+        "value": "1200px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "O próximo passo; um por bloco.",
+      "html": "<button class=\"ds-btn-primary\">Registrar B.O.</button>",
+      "css": ".ds-btn-primary{font:700 15px/1.2 \"Barlow\",system-ui,sans-serif;background:#f2c230;border:1.5px solid #f2c230;color:#15181b;border-radius:3px;padding:10px 16px;min-height:42px;cursor:pointer;transition:background-color .15s,border-color .15s,transform .12s cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:#ffd451;border-color:#ffd451}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid #f2c230;outline-offset:3px}"
+    },
+    {
+      "name": "Botão secundário",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Ações de apoio ao lado do principal.",
+      "html": "<button class=\"ds-btn\">Ver quadro</button>",
+      "css": ".ds-btn{font:600 15px/1.2 \"Barlow\",system-ui,sans-serif;background:transparent;border:1.5px solid #4b525b;color:#f2f1ec;border-radius:3px;padding:10px 16px;min-height:42px;cursor:pointer;transition:border-color .15s,transform .12s}.ds-btn:hover{border-color:#f2f1ec}.ds-btn:active{transform:translateY(1px)}.ds-btn:focus-visible{outline:2px solid #f2c230;outline-offset:3px}"
+    },
+    {
+      "name": "Botão destrutivo",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Excluir, recusar, remover.",
+      "html": "<button class=\"ds-btn-danger\">Recusar</button>",
+      "css": ".ds-btn-danger{font:600 15px/1.2 \"Barlow\",system-ui,sans-serif;background:transparent;border:1.5px solid rgba(211,38,46,.6);color:#ff7a7e;border-radius:3px;padding:10px 16px;min-height:42px;cursor:pointer;transition:background-color .15s,color .15s}.ds-btn-danger:hover{background:#d3262e;border-color:#d3262e;color:#fff}.ds-btn-danger:focus-visible{outline:2px solid #f2c230;outline-offset:3px}"
+    },
+    {
+      "name": "Campo de texto",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo com rótulo acima; foco amarelo.",
+      "html": "<label class=\"ds-label\">Passaporte<input class=\"ds-input\" placeholder=\"Ex.: 1001\"></label>",
+      "css": ".ds-label{display:flex;flex-direction:column;gap:6px;font:600 15px \"Barlow\",system-ui,sans-serif;color:#f2f1ec}.ds-input{font:400 16px/1.4 \"Barlow\",system-ui,sans-serif;color:#f2f1ec;background:#15181b;border:1.5px solid #4b525b;border-radius:3px;padding:11px 12px;min-height:44px}.ds-input::placeholder{color:#7d838b}.ds-input:hover{border-color:#5f6670}.ds-input:focus{outline:none;border-color:#f2c230;box-shadow:0 0 0 3px rgba(242,194,48,.18)}"
+    },
+    {
+      "name": "Chips de situação",
+      "kind": "chip",
+      "refersTo": "tag-aguardando",
+      "description": "Situação presa ao item: ativo, aguardando, procurado.",
+      "html": "<span class=\"ds-tag ds-green\">Ativo</span> <span class=\"ds-tag ds-gold\">Aguardando</span> <span class=\"ds-tag ds-red\">Procurado</span>",
+      "css": ".ds-tag{display:inline-flex;align-items:center;font:600 13px/1.2 \"Barlow\",system-ui,sans-serif;padding:5px 10px;border-radius:999px;border:1px solid}.ds-green{background:rgba(76,199,138,.12);border-color:rgba(76,199,138,.3);color:#4cc78a}.ds-gold{background:rgba(240,145,58,.12);border-color:rgba(240,145,58,.35);color:#f0913a}.ds-red{background:rgba(211,38,46,.12);border-color:rgba(211,38,46,.35);color:#ff7a7e}"
+    },
+    {
+      "name": "Menu lateral da área policial",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Item ativo em lataria com a marca em L.",
+      "html": "<nav class=\"ds-side\"><a class=\"ds-nav ds-active\" href=\"#\">Painel</a><a class=\"ds-nav\" href=\"#\">B.O. recebidos</a><a class=\"ds-nav\" href=\"#\">Efetivo</a></nav>",
+      "css": ".ds-side{display:flex;flex-direction:column;gap:1px;width:224px;background:#1d2125;padding:12px}.ds-nav{display:block;font:500 15px/1.2 \"Barlow\",system-ui,sans-serif;color:#d7d9db;text-decoration:none;padding:10px 12px;border-radius:3px;transition:background-color .15s}.ds-nav:hover{background:#272c31}.ds-nav:focus-visible{outline:2px solid #f2c230;outline-offset:3px}.ds-active{color:#f2f1ec;background:linear-gradient(#f2c230,#f2c230) 0 0/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 0 0/2px 12px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 0/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 0/2px 12px no-repeat,linear-gradient(#f2c230,#f2c230) 0 100%/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 0 100%/2px 12px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 100%/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 100%/2px 12px no-repeat,#272c31}"
+    },
+    {
+      "name": "Painel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Contêiner de concreto com cabeçalho separado por junta.",
+      "html": "<section class=\"ds-panel\"><header class=\"ds-panelhead\"><h2>Operações em andamento</h2></header><p class=\"ds-panelbody\">Nenhuma operação em andamento.</p></section>",
+      "css": ".ds-panel{background:#1d2125;border:1px solid #353b42;border-radius:6px;color:#d7d9db;font:400 15px/1.55 \"Barlow\",system-ui,sans-serif}.ds-panelhead{padding:18px 24px;border-bottom:1px solid #353b42}.ds-panelhead h2{margin:0;font:700 28px/1.1 \"Big Shoulders Display\",\"Arial Narrow\",sans-serif;color:#f2f1ec}.ds-panelbody{margin:0;padding:24px;color:#9ea4ab}"
+    },
+    {
+      "name": "Fileira de formação",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Destinos ou etapas lado a lado com juntas de 1px e número em estêncil; a posição recomendada é marcada.",
+      "html": "<div class=\"ds-fileira\"><a class=\"ds-pos ds-on\" href=\"#\"><b>1</b><span>Sou da equipe</span></a><a class=\"ds-pos\" href=\"#\"><b>2</b><span>Preciso de atendimento</span></a><a class=\"ds-pos\" href=\"#\"><b>3</b><span>Quero entrar na ROTA</span></a></div>",
+      "css": ".ds-fileira{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #353b42;border-bottom:1px solid #353b42}.ds-pos{display:flex;flex-direction:column;gap:10px;padding:24px;text-decoration:none;border-left:1px solid #353b42;transition:background-color .15s}.ds-pos:first-child{border-left:0}.ds-pos:hover{background:#1d2125}.ds-pos:focus-visible{outline:2px solid #f2c230;outline-offset:3px}.ds-pos b{font:700 44px/1 \"Big Shoulders Stencil Display\",\"Big Shoulders Display\",sans-serif;color:#f2f1ec}.ds-pos span{font:800 26px/1 \"Big Shoulders Display\",\"Arial Narrow\",sans-serif;color:#f2f1ec}.ds-on{background:linear-gradient(#f2c230,#f2c230) 0 0/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 0 0/2px 12px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 0/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 0/2px 12px no-repeat,linear-gradient(#f2c230,#f2c230) 0 100%/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 0 100%/2px 12px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 100%/12px 2px no-repeat,linear-gradient(#f2c230,#f2c230) 100% 100%/2px 12px no-repeat,rgba(242,194,48,.04)}.ds-on b{color:#f5cf55}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Formatura no pátio do batalhão",
+    "overview": "O portal é o pátio do batalhão à noite, com a tropa em forma. O chão é asfalto e concreto grafite, o texto é giz branco e a única tinta forte é o amarelo de demarcação, pintado só onde alguém se posiciona: o item atual, o selecionado, o foco e o próximo passo. Tudo entra em fileira: destinos, etapas, métricas e listas se alinham lado a lado, separados por juntas finas de concreto em vez de cartões soltos.\n\nA densidade muda conforme o modo. Home e ingresso (Persuadir) usam letreiro de comando em caixa alta, foto real do servidor e respiro largo entre blocos (96px). Atendimento, área policial e administração (Operar) viram painéis de concreto com tabelas, filas e métricas em estêncil. Código Penal e regras (Ler) mantêm Barlow em corpo de leitura. É o mesmo mundo em todas as superfícies.\n\nO sistema recusa o \"site policial\" padrão (hero escuro com viatura, título enorme e três cartões iguais) e o painel tático de videogame (neon, HUD, brilho). A ficção é explícita: o selo \"RP fictício\" acompanha a marca, e a autoridade vem da disciplina de formação, não de imitar um órgão real.",
+    "keyCharacteristics": [
+      "Chão escuro e chapado em três camadas tonais (asfalto, chassi, lataria), sem sombra em repouso.",
+      "Amarelo de demarcação raro e funcional: marca em \"L\" nos quatro cantos, linha pintada sob o cabeçalho e botão principal.",
+      "Letreiro condensado Big Shoulders para comando; estêncil só em números grandes; Barlow para todo o resto.",
+      "Fileiras alinhadas com juntas de 1px no lugar de grades de cartões.",
+      "Cor de estado presa ao item: verde ativo/aceito, laranja aguardando, vermelho alerta/procurado.",
+      "Ícones exclusivamente Lucide."
+    ],
+    "rules": [
+      {
+        "name": "The Demarcação Rule",
+        "body": "Amarelo só onde há posição: o item atual, o selecionado, o foco e o próximo passo (marca em \"L\" via `--pos`, linha pintada sob o cabeçalho, botão principal). Nunca em ícones decorativos, títulos, selos ou fundos de seção.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sirene Rule",
+        "body": "Vermelho só para alerta, procurado e ação destrutiva. Se nada está em risco, não há vermelho na tela.",
+        "section": "colors"
+      },
+      {
+        "name": "The Aguardando Rule",
+        "body": "Laranja existe apenas no chip \"Aguardando\" e no estado pendente que ele representa. Nenhum outro elemento usa laranja.",
+        "section": "colors"
+      },
+      {
+        "name": "The Em Forma Rule",
+        "body": "Verde marca ativo e aceito, e nada mais; não é cor de sucesso genérica para decoração.",
+        "section": "colors"
+      },
+      {
+        "name": "The Estêncil Grande Rule",
+        "body": "Estêncil só em números grandes (40px ou mais). Abaixo disso o número usa Big Shoulders Display ou Barlow.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sem Kicker Rule",
+        "body": "Nenhum rótulo em caixa alta acima de títulos. O título se apresenta sozinho; contexto vai na linha de apoio abaixo dele.",
+        "section": "typography"
+      },
+      {
+        "name": "The Chão Chapado Rule",
+        "body": "Superfícies são planas em repouso. Para destacar, sobe uma camada tonal (chassi para lataria); só o que flutua ganha sombra.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** usar o amarelo de demarcação (#f2c230) só para posição, seleção, foco e próximo passo: marca em \"L\" (`--pos`), linha pintada de 72×3px sob o cabeçalho e botão principal.",
+      "**Do** reservar o vermelho sirene para alerta, procurado e ação destrutiva; o laranja pendente só para o chip \"Aguardando\"; o verde rádio para ativo e aceito.",
+      "**Do** usar Big Shoulders Stencil Display apenas em números de 40px ou mais.",
+      "**Do** alinhar conteúdo em fileiras com juntas de 1px (friso) em vez de cartões soltos.",
+      "**Do** separar camadas por tom (asfalto, chassi, lataria) e manter as superfícies sem sombra em repouso.",
+      "**Do** usar só ícones Lucide (gerados em `js/icons.js`), em 1.15em ao lado do texto.",
+      "**Do** manter o selo \"RP fictício\" junto da marca e o aviso de ficção no login e no rodapé."
+    ],
+    "donts": [
+      "**Don't** colocar rótulos em caixa alta acima de títulos (kickers ou eyebrows); a classe existe oculta e não deve voltar a aparecer.",
+      "**Don't** usar símbolos Unicode como ícone (✓, ×, ★, setas); use o ícone Lucide equivalente.",
+      "**Don't** usar amarelo em ícones decorativos, títulos ou selos, nem vermelho como cor de destaque.",
+      "**Don't** aplicar estêncil em protocolos, prefixos ou números pequenos.",
+      "**Don't** montar a home como hero escuro com viatura, título enorme e três cartões iguais.",
+      "**Don't** imitar painel tático de videogame: nada de neon, brilho ou HUD."
+    ]
+  }
+}
