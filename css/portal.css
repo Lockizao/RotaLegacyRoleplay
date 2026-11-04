@@ -875,3 +875,30 @@ dialog#modal .form{padding:24px}
 .fiction-notice span{color:var(--texto)}
 
 #nav button,.nav-group-toggle{white-space:nowrap}
+
+/* acompanhar pedido */
+.track-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:32px;align-items:start}
+.track-form{max-width:none;margin:0;border-style:solid}
+.track-help{padding:4px 0}
+.track-help h3{font:700 26px/1.1 var(--display);margin-bottom:12px}
+.track-help p{color:var(--nevoa);font-size:15px}
+.track-actions{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.ticket-key>b{font-size:17px}
+.ticket-key-actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.ticket-key-raw{font-size:14px;color:var(--nevoa);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ticket-key-raw code{display:inline;margin:0;font-size:13px}
+.access-first{background:var(--asfalto);border:1px solid var(--friso);border-radius:var(--r-s);padding:12px 14px;font-size:14px;color:var(--texto);margin:0}
+.access-first .link{min-height:0;padding:0;font-size:14px}
+@media (max-width:860px){.track-layout{grid-template-columns:1fr}}
+
+/* tela do pedido enviado (B.O. e Ouvidoria) */
+.support-panel>.support-ticket-state,.support-panel>.support-ticket-fields,.support-panel>.ticket-key,.support-panel>.hint{margin:20px 24px}
+.support-panel>.hint{display:block;margin-top:0}
+.support-panel .panelhead small{color:var(--nevoa)}
+.support-panel>.support-ticket-state{display:flex;flex-direction:column;gap:4px;border-radius:var(--r-m);padding:16px 18px;border:1px solid var(--friso);background:var(--asfalto);font-size:15px}
+.support-panel>.support-ticket-state b{font:700 24px/1.1 var(--display);color:var(--faixa)}
+.support-panel>.support-ticket-state p{margin:0;color:var(--texto)}
+.support-ticket-state.pending{border-color:rgba(230,173,69,.4)}.support-ticket-state.pending b{color:var(--pendente)}
+.support-ticket-state.accepted{border-color:rgba(70,196,134,.4)}.support-ticket-state.accepted b{color:var(--radio)}
+.support-ticket-state.rejected{border-color:rgba(211,38,46,.45)}.support-ticket-state.rejected b{color:var(--sirene-texto)}
+@media (max-width:760px){.support-panel>.support-ticket-state,.support-panel>.support-ticket-fields,.support-panel>.ticket-key,.support-panel>.hint{margin-left:16px;margin-right:16px}}
