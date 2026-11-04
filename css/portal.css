@@ -224,7 +224,7 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .issued-token small{color:var(--nevoa)}
 
 /* ---------- janela modal e aviso ---------- */
-dialog#modal{width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--friso-forte);border-radius:var(--r-m);background:var(--chassi);color:var(--texto);box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:auto}
+dialog#modal{width:min(820px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--friso-forte);border-radius:var(--r-m);background:var(--chassi);color:var(--texto);box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:auto}
 dialog#modal::backdrop{background:rgba(6,7,9,.72);backdrop-filter:blur(3px)}
 .modalhead{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 24px;background:var(--chassi);border-bottom:1px solid var(--friso)}
 .modalhead h2{font-size:30px}
@@ -808,3 +808,23 @@ dialog#modal .form{padding:24px}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 @media print{.bar,.site-footer,#toTop,#toast{display:none!important}html,body{background:#fff;color:#000}}
+
+/* ================= PAINEL POLICIAL: fila e procurados ================= */
+.tag.red{background:rgba(211,38,46,.12);border-color:rgba(211,38,46,.35);color:var(--sirene-texto)}
+.metric-grid>.hot b{color:var(--sirene-texto)}
+.prefixo{display:inline-flex;align-items:center;gap:8px;font:700 16px/1 var(--display);letter-spacing:.04em;color:var(--faixa);font-variant-numeric:tabular-nums;white-space:nowrap}
+.prefixo::before{content:"";width:22px;height:5px;flex:none;transform:skewX(-28deg);background:linear-gradient(90deg,var(--sirene) 0 33.3%,var(--faixa) 33.3% 66.6%,#000 66.6%)}
+.dash-cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start}
+.dash-cols .panel{margin:0}
+.table-wrap{overflow-x:auto}
+.dash-queue td b{display:block;color:var(--faixa);font-weight:600}
+.dash-queue td small,.dash-queue td.muted{color:var(--nevoa);font-size:14px}
+.dash-list{list-style:none;margin:0;padding:4px 0}
+.dash-list li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 20px}
+.dash-list li+li{border-top:1px solid var(--friso)}
+.dash-list li>span:first-child{display:flex;flex-direction:column;min-width:0}
+.dash-list b{color:var(--faixa);font-weight:600}
+.dash-list small{color:var(--nevoa);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:1099px){.dash-cols{grid-template-columns:1fr}}
+@media (max-width:760px){.dash-queue thead{display:none}.dash-queue tr{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:14px 16px;border-bottom:1px solid var(--friso)}.dash-queue td{border:0;padding:0}.dash-queue td:nth-child(2){grid-column:1/-1;grid-row:2}.dash-queue td:nth-child(3){grid-column:1/-1}}
+.arrest-form-intro,.arrest-form-grid{grid-column:1/-1}
