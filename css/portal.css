@@ -126,7 +126,7 @@ legend{font:600 15px var(--body);color:var(--faixa);padding:0 6px}
 #nav .nav-sub button.active{box-shadow:inset 3px 0 0 var(--sirene);background:var(--lataria)}
 
 /* área policial: o cabeçalho vira menu lateral */
-@media (min-width:1000px){
+@media (min-width:1200px){
   body.police-shell{background:linear-gradient(90deg,var(--chassi) 247px,var(--friso) 247px 248px,var(--asfalto) 248px);display:grid;grid-template-columns:248px minmax(0,1fr);grid-template-rows:1fr auto}
   .police-shell .bar{grid-row:1/span 2;grid-column:1;height:100vh;position:sticky;top:0;border-bottom:0;border-right:1px solid var(--friso);background:var(--chassi);overflow-y:auto;backdrop-filter:none}
   .police-shell .bar-in{flex-direction:column;align-items:stretch;padding:20px 12px;gap:18px;min-height:100%}
@@ -720,7 +720,7 @@ dialog#modal .form{padding:24px}
 .metric-grid.police-metrics b{font-size:46px}
 
 /* ================= responsivo ================= */
-@media (max-width:1099px){
+@media (max-width:1199px){
   .bar-in{gap:16px}
   .menu{display:inline-flex;margin-left:auto;gap:10px}
   .menu span{width:16px;height:2px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}
@@ -735,6 +735,8 @@ dialog#modal .form{padding:24px}
   .nav-actions{flex-direction:column;align-items:stretch;border-top:1px solid var(--friso);padding-top:12px;margin-top:8px}
   #nav .loginlink{justify-content:center}
   .nav-who{padding:0 12px}
+}
+@media (max-width:1099px){
   .home-services{grid-template-columns:1fr 1fr}
   .home-service:first-child{grid-column:1/-1;border-bottom:1px solid var(--friso)}
   .home-service:nth-child(2){border-left:0;padding-left:0}
@@ -857,3 +859,19 @@ dialog#modal .form{padding:24px}
 .notice-help p{color:var(--nevoa);font-size:15px;margin:0 0 4px}
 .notice-layout>.notice-list>.empty{border:1px dashed var(--friso-forte);border-radius:var(--r-m);text-align:left}
 @media (max-width:1099px){.notice-layout{grid-template-columns:1fr}.notice-aside{position:static}}
+
+/* marca: escudo + ROTA + nome por extenso + selo de RP fictício */
+.brand,.footer-brand{gap:12px}
+.brand-text{display:flex;flex-direction:column;gap:3px;line-height:1}
+.brand-name{display:flex;align-items:center;gap:8px}
+.brand .brand-name b,.footer-brand .brand-name b{font:800 26px/.9 var(--display);letter-spacing:.03em;color:var(--faixa)}
+.brand-text small{font:500 12.5px/1.15 var(--body);color:var(--nevoa);letter-spacing:.01em;white-space:nowrap}
+.rp-badge{font:600 11px/1 var(--body);font-style:normal;color:var(--pendente);border:1px solid rgba(230,173,69,.45);border-radius:999px;padding:3px 7px;white-space:nowrap}
+.police-shell .brand-text small{white-space:normal}
+@media (max-width:420px){.brand-text small{display:none}}
+/* aviso de portal fictício (login) */
+.fiction-notice{display:flex;flex-direction:column;gap:4px;background:rgba(230,173,69,.08);border:1px solid rgba(230,173,69,.4);border-radius:var(--r-s);padding:12px 14px;font-size:14px}
+.fiction-notice b{color:var(--pendente);font-size:15px}
+.fiction-notice span{color:var(--texto)}
+
+#nav button,.nav-group-toggle{white-space:nowrap}
