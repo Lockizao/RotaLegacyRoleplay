@@ -838,3 +838,8 @@ dialog#modal .form{padding:24px}
 .application-personal-grid label i{margin-left:2px}
 .ombudsman-shell+.ticket-lookup{max-width:none}
 .footer-bottom{border-top:0;position:relative}.footer-bottom::before{content:"";position:absolute;top:0;left:var(--gutter);right:var(--gutter);border-top:1px solid var(--friso)}
+/* escudo sem fundo: altura manda, largura acompanha a proporção */
+.brand img{width:auto;height:36px}
+.footer-brand img{width:auto;height:32px}
+.access-crest-wrap img{width:auto;height:76px}
+.roster-id-card header img{width:auto;height:40px}
