@@ -828,3 +828,13 @@ dialog#modal .form{padding:24px}
 @media (max-width:1099px){.dash-cols{grid-template-columns:1fr}}
 @media (max-width:760px){.dash-queue thead{display:none}.dash-queue tr{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:14px 16px;border-bottom:1px solid var(--friso)}.dash-queue td{border:0;padding:0}.dash-queue td:nth-child(2){grid-column:1/-1;grid-row:2}.dash-queue td:nth-child(3){grid-column:1/-1}}
 .arrest-form-intro,.arrest-form-grid{grid-column:1/-1}
+.city-button.city-button-primary{color:var(--asfalto)}
+.city-legacy-logo-light{display:none}
+.city-legacy-logo-dark{display:block}
+.subdivision-card-image{overflow:hidden}
+.subdivision-card-image img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.application-personal-grid label{display:block}
+.application-personal-grid label input{display:block;margin-top:6px}
+.application-personal-grid label i{margin-left:2px}
+.ombudsman-shell+.ticket-lookup{max-width:none}
+.footer-bottom{border-top:0;position:relative}.footer-bottom::before{content:"";position:absolute;top:0;left:var(--gutter);right:var(--gutter);border-top:1px solid var(--friso)}
