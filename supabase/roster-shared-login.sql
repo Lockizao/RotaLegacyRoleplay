@@ -39,4 +39,4 @@ values ('rota-roster-photos', 'rota-roster-photos', true, 3145728, array['image/
 on conflict (id) do update set public = true, file_size_limit = 3145728, allowed_mime_types = excluded.allowed_mime_types;
 
 -- Nenhuma política de escrita pública é criada para a tabela ou para o bucket.
--- O servidor usa SUPABASE_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY e valida a sessão admin.
+-- O servidor usa SUPABASE_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY e exige o poder Efetivo (efetivo.gerenciar).

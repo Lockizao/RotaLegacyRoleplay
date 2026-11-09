@@ -42,7 +42,7 @@ export async function requireAccount(request, env) {
   const userResponse = await fetch(cfg.url + "/auth/v1/user", { headers: { apikey: cfg.publicKey, Authorization: "Bearer " + token } });
   const user = await userResponse.json().catch(() => ({}));
   if (!userResponse.ok || !user.id) throw Object.assign(new Error("Sessão inválida ou expirada."), { status: 401 });
-  const members = await supabase(env, "/rest/v1/police_users?select=user_id,display_name,normalized_name,role,enabled,roster_id,suspended_until,suspension_reason,last_seen_at,must_set_password,login_id,removed_at&user_id=eq." + encodeURIComponent(user.id) + "&enabled=eq.true&limit=1", { method: "GET" });
+  const members = await supabase(env, "/rest/v1/police_users?select=user_id,display_name,normalized_name,role,enabled,roster_id,suspended_until,suspension_reason,last_seen_at,must_set_password,login_id,removed_at,login_email&user_id=eq." + encodeURIComponent(user.id) + "&enabled=eq.true&limit=1", { method: "GET" });
   if (!Array.isArray(members) || !members.length) throw Object.assign(new Error("Esta conta não está autorizada para acessar este recurso."), { status: 403 });
   assertNotSuspended(members[0]);
   if (members[0].removed_at) throw Object.assign(new Error("Esta conta foi removida da corporação."), { status: 403 });
@@ -61,6 +61,7 @@ export async function requireStaff(request, env) {
   const member = await requireAccount(request, env);
   // Visitante (ou conta policial ainda sem ficha do efetivo) não entra na área policial.
   if (!isMemberRole(member.role) || !member.roster_id) throw Object.assign(new Error("Conta de visitante: a área policial é só para integrantes da ROTA. Peça ingresso na recepção."), { status: 403, visitor: true });
+  if (member.must_set_password !== false) throw Object.assign(new Error("Crie a sua senha antes de usar a área policial."), { status: 403 });
   await touchPresence(env, member);
   const [tags, direct, rank] = await Promise.all([officerTags(env, member.user_id), directPermissions(env, member.user_id), rosterRank(env, member.roster_id)]);
   const permissions = [...new Set(tags.flatMap((tag) => tag.permissions).concat(direct))];
@@ -128,9 +129,6 @@ export async function checkArea(env, actor, area) {
   const rules = await areaRules(env);
   if (actor.level >= rankLevel(rules[area])) return actor;
   throw Object.assign(new Error("Esta área está liberada a partir de " + (rules[area] || "Recruta") + "."), { status: 403 });
-}
-export async function requireArea(request, env, area) {
-  return checkArea(env, await requireStaff(request, env), area);
 }
 // Apagar o registro de outra pessoa exige o poder de moderar; o próprio autor pode apagar o seu.
 export function assertCanRemove(actor, createdBy) {

@@ -1,12 +1,12 @@
 import { clean, json, originError } from "./http.js";
-import { requirePermission } from "./auth.js";
+import { outranks, requirePermission, rosterRank } from "./auth.js";
+import { rankLevel } from "./permissions.js";
 import { configuration, supabase } from "./supabase.js";
 import { audit, blacklistInsert, cleanLoginId, verifyActor } from "./members.js";
 const MAX_BODY_BYTES = 5000;
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
 const PHOTO_BUCKET = "rota-blacklist-photos";
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 function publicRow(row) {
   return { id: row.id, characterName: row.character_name, playerId: row.player_id, photoUrl: row.photo_url || "", createdAt: row.created_at };
@@ -49,6 +49,11 @@ export async function handleBlacklist(request, env) {
       if (photoPath && !validPhotoPath(photoPath)) return json(400, { error: "Envie uma foto válida ou deixe sem foto." });
       if (reason.length < 15) return json(400, { error: "Escreva o motivo detalhado da inclusão (pelo menos 15 caracteres)." });
       if (input.understood !== true || input.confirm !== true) return json(400, { error: "Confirme que entende as consequências e a inclusão definitiva." });
+      // Se o ID pertence a uma conta ativa, só quem está acima dela pode bloqueá-la.
+      if (staff.role !== "admin") {
+        const owner = await supabase(env, "/rest/v1/police_users?select=roster_id&login_id=eq." + encodeURIComponent(playerId) + "&removed_at=is.null&limit=1", { method: "GET" }).catch(() => []);
+        if (Array.isArray(owner) && owner.length && !outranks(staff, rankLevel(await rosterRank(env, owner[0].roster_id)))) return json(403, { error: "Este ID é de um integrante de patente igual ou maior que a sua." });
+      }
       const who = await verifyActor(env, request, staff, input, "blacklist-incluir");
       const cfg = configuration(env), photoUrl = photoPath ? cfg.url + "/storage/v1/object/public/" + PHOTO_BUCKET + "/" + photoPath : "";
       const row = await blacklistInsert(env, { character_name: characterName, player_id: playerId, photo_path: photoPath, photo_url: photoUrl, reason, created_by: staff.id || null, created_by_name: who.name, created_by_login: who.loginId });

@@ -1,7 +1,7 @@
 -- Comunicados e editais publicados pela administração do portal.
 -- Execute no Supabase > SQL Editor. É seguro executar novamente.
 -- Leitura e gravação passam pela API do portal (/api/content) com a chave do servidor;
--- somente a sessão de administrador publica ou remove conteúdo.
+-- publicar ou remover exige o poder Comunicados (comunicados.publicar) ou Editais (editais.gerenciar).
 
 create extension if not exists pgcrypto;
 

@@ -1,5 +1,5 @@
 -- Blacklist pública da ROTA RP. Execute este arquivo no Supabase > SQL Editor.
--- Só a sessão de administrador do portal pode incluir/remover registros.
+-- Incluir e retirar exigem o poder Blacklist, o ID e a senha de quem faz (blacklist.js).
 -- Cidadãos e policiais consultam a lista pública; fotos também ficam públicas.
 
 create extension if not exists pgcrypto;

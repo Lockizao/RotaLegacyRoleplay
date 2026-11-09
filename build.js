@@ -4,12 +4,13 @@ const root = __dirname;
 const out = path.join(root, "dist");
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
-for (const item of ["index.html", "README.md", "assets", "css", "js"]) {
+// O README (instruções de instalação) não vai para o site publicado.
+for (const item of ["index.html", "assets", "css", "js"]) {
   const from = path.join(root, item);
   if (fs.existsSync(from)) fs.cpSync(from, path.join(out, item), { recursive: true });
 }
 // Supabase's URL and publishable key are public client settings. Inject them
-// at build time so the static site and Netlify Functions use the same project.
+// at build time so the static site and the Cloudflare Pages Functions use the same project.
 // Never expose the service-role key, admin password, or session secret here.
 const sourceConfigPath = path.join(out, "js", "supabase-config.js");
 const sourceConfig = fs.readFileSync(sourceConfigPath, "utf8");

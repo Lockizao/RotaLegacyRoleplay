@@ -65,7 +65,7 @@ function adminCredentialsOk(env, user, password) {
   if (expected.length < 12) return false;
   let difference = given.length ^ expected.length;
   for (let i = 0; i < Math.max(given.length, expected.length); i++) difference |= (given[i] || 0) ^ (expected[i] || 0);
-  return clean(user, 60).toLowerCase() === expectedUser.toLowerCase() && difference === 0;
+  return expectedUser.length > 0 && clean(user, 60).toLowerCase() === expectedUser.toLowerCase() && difference === 0;
 }
 // Confere de novo quem está fazendo a ação: integrante informa o próprio ID e a senha; o administrador, usuário e senha.
 export async function verifyActor(env, request, actor, input, action) {
@@ -172,7 +172,7 @@ export async function removeMember(env, request, actor, input) {
   const target = await loadTarget(env, clean(input.userId, 36));
   if (target.removed_at) throw fail(409, "Este integrante já foi removido.");
   await assertOutranksTarget(env, actor, target);
-  const kind = REMOVAL_KINDS[input.kind] ? input.kind : "";
+  const kind = Object.hasOwn(REMOVAL_KINDS, String(input.kind || "")) ? input.kind : "";
   const reason = clean(input.reason, 500, true);
   if (!kind) throw fail(400, "Escolha o tipo de remoção.");
   if (reason.length < 10) throw fail(400, "Escreva o motivo da remoção (pelo menos 10 caracteres).");

@@ -1,6 +1,6 @@
 -- ROTA Portal RP: tickets compartilhados, aprovação de integrantes e auditoria de login.
--- Execute no Supabase > SQL Editor. Operações administrativas usam a Netlify Function
--- com a chave secret/service_role guardada somente nas variáveis privadas do Netlify.
+-- Execute no Supabase > SQL Editor. Operações administrativas usam as Functions do Cloudflare
+-- com a chave secret/service_role guardada somente nas variáveis privadas do Cloudflare.
 
 create extension if not exists pgcrypto;
 
@@ -105,10 +105,16 @@ alter table public.login_events enable row level security;
 alter table public.ouvidoria_tickets enable row level security;
 alter table public.bo_tickets enable row level security;
 
-create or replace function public.is_rota_police()
-returns boolean language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from public.police_users p where p.user_id = (select auth.uid()) and p.enabled = true);
-$$;
+-- Versão básica só na primeira instalação: patentes.sql, recepcao.sql e integrantes.sql a substituem por uma mais rígida.
+-- Rodar este arquivo de novo não pode afrouxar a regra que já está valendo.
+do $do$ begin
+  if not exists (select 1 from pg_proc f join pg_namespace n on n.oid = f.pronamespace where n.nspname = 'public' and f.proname = 'is_rota_police') then
+    execute $f$create function public.is_rota_police()
+      returns boolean language sql stable security definer set search_path = '' as $b$
+        select exists (select 1 from public.police_users p where p.user_id = (select auth.uid()) and p.enabled = true);
+      $b$$f$;
+  end if;
+end $do$;
 revoke all on function public.is_rota_police() from public, anon;
 grant execute on function public.is_rota_police() to authenticated;
 
@@ -187,12 +193,18 @@ drop policy if exists "citizen reads own ouvidoria status by token" on public.ou
 create policy "citizen reads own ouvidoria status by token" on public.ouvidoria_tickets for select to anon using (
   tracking_token = coalesce(nullif((coalesce(nullif(current_setting('request.headers', true), ''), '{}')::jsonb ->> 'x-ticket-token'), ''), '!no-ticket-token!')
 );
-drop policy if exists "authorized police reads ouvidoria tickets" on public.ouvidoria_tickets;
-create policy "authorized police reads ouvidoria tickets" on public.ouvidoria_tickets for select to authenticated
-  using ((select public.is_rota_police()));
-drop policy if exists "authorized police decides ouvidoria tickets" on public.ouvidoria_tickets;
-create policy "authorized police decides ouvidoria tickets" on public.ouvidoria_tickets for update to authenticated
-  using ((select public.is_rota_police())) with check ((select public.is_rota_police()));
+-- Criada só se ainda não existir: patentes.sql a troca pela regra com patente mínima (rota_can).
+do $do$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ouvidoria_tickets' and policyname = 'authorized police reads ouvidoria tickets') then
+    execute $p$create policy "authorized police reads ouvidoria tickets" on public.ouvidoria_tickets for select to authenticated using ((select public.is_rota_police()))$p$;
+  end if;
+end $do$;
+-- Criada só se ainda não existir: patentes.sql a troca pela regra com patente mínima (rota_can).
+do $do$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ouvidoria_tickets' and policyname = 'authorized police decides ouvidoria tickets') then
+    execute $p$create policy "authorized police decides ouvidoria tickets" on public.ouvidoria_tickets for update to authenticated using ((select public.is_rota_police())) with check ((select public.is_rota_police()))$p$;
+  end if;
+end $do$;
 
 drop policy if exists "citizens submit pending bo tickets" on public.bo_tickets;
 create policy "citizens submit pending bo tickets" on public.bo_tickets for insert to anon, authenticated
@@ -201,14 +213,20 @@ drop policy if exists "citizen reads own bo status by token" on public.bo_ticket
 create policy "citizen reads own bo status by token" on public.bo_tickets for select to anon using (
   tracking_token = coalesce(nullif((coalesce(nullif(current_setting('request.headers', true), ''), '{}')::jsonb ->> 'x-ticket-token'), ''), '!no-ticket-token!')
 );
-drop policy if exists "authorized police reads bo tickets" on public.bo_tickets;
-create policy "authorized police reads bo tickets" on public.bo_tickets for select to authenticated
-  using ((select public.is_rota_police()));
-drop policy if exists "authorized police decides bo tickets" on public.bo_tickets;
-create policy "authorized police decides bo tickets" on public.bo_tickets for update to authenticated
-  using ((select public.is_rota_police())) with check ((select public.is_rota_police()));
+-- Criada só se ainda não existir: patentes.sql a troca pela regra com patente mínima (rota_can).
+do $do$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'bo_tickets' and policyname = 'authorized police reads bo tickets') then
+    execute $p$create policy "authorized police reads bo tickets" on public.bo_tickets for select to authenticated using ((select public.is_rota_police()))$p$;
+  end if;
+end $do$;
+-- Criada só se ainda não existir: patentes.sql a troca pela regra com patente mínima (rota_can).
+do $do$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'bo_tickets' and policyname = 'authorized police decides bo tickets') then
+    execute $p$create policy "authorized police decides bo tickets" on public.bo_tickets for update to authenticated using ((select public.is_rota_police())) with check ((select public.is_rota_police()))$p$;
+  end if;
+end $do$;
 
--- A chave secret/service_role usada pela Netlify Function ignora RLS; nunca a coloque no navegador ou no GitHub.
+-- A chave secret/service_role usada pelas Functions do Cloudflare ignora RLS; nunca a coloque no navegador ou no GitHub.
 
 
 -- Atualiza a ficha pública de recrutamento da ROTA e mantém o intervalo de 48 horas por ID MTA.

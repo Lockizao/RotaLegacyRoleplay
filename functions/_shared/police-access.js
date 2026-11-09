@@ -1,12 +1,11 @@
 import { clean, encodeBase64Url, fail, json, originError } from "./http.js";
 import { allowedAreas, areaRules, assertNotSuspended, outranks, requireAccount, requireAdmin, requireStaff, rosterRank, signAdmin } from "./auth.js";
-import { ALL_PERMISSIONS, AREAS, PERMISSIONS, RANKS, rankLevel, validPermissions } from "./permissions.js";
+import { ADMIN_LEVEL, ALL_PERMISSIONS, AREAS, PERMISSIONS, RANKS, rankLevel, validPermissions } from "./permissions.js";
 import { identitiesByIds, identitiesFor } from "./identity.js";
 import { BLACKLIST_MESSAGE, activeBlacklist, assertNotLocked, cleanLoginId, editAccount, recordAttempt, removeMember, setOwnLoginId } from "./members.js";
 const MAX_BODY_BYTES = 16000;
 const SESSION_SECONDS = 8 * 60 * 60;
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 export function normalizeName(value) {
   return clean(value, 80).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -82,7 +81,7 @@ async function createAccessRequest(env, input, requestType) {
   return { ok: true, message: requestType === "acesso" ? "Pedido enviado. Aguarde a aprovação da administração da ROTA." : "Pedido enviado. Se a conta existir, a administração poderá gerar um novo token." };
 }
 
-// Login pelo ID no servidor + senha. Conta antiga ainda sem ID entra pelo nome uma última vez e registra o ID.
+// Login pelo ID no servidor + senha. Conta antiga ainda sem ID entra pelo nome até registrar o ID (depois disso, só pelo ID).
 async function officerLogin(env, input, request) {
   const loginId = cleanLoginId(input.loginId);
   const legacyName = loginId ? "" : normalizeName(input.name);
@@ -138,7 +137,7 @@ async function assertAdminNotLocked(env, clientKey) {
   try {
     failures = await db(env, "admin_login_attempts?select=client_key&succeeded=eq.false&attempted_at=gte." + encodeURIComponent(since) + "&limit=" + ADMIN_MAX_FAILURES_TOTAL, "GET");
   } catch (_) {
-    throw fail(503, "Login administrativo indisponível: execute o supabase/schema.sql atualizado no Supabase.");
+    throw fail(503, "Login administrativo indisponível: execute no Supabase os arquivos SQL na ordem indicada no README.");
   }
   const rows = Array.isArray(failures) ? failures : [];
   if (rows.length >= ADMIN_MAX_FAILURES_TOTAL || rows.filter((row) => row.client_key === clientKey).length >= ADMIN_MAX_FAILURES_PER_CLIENT) {
@@ -156,7 +155,7 @@ async function adminLogin(env, input, request) {
   const submittedUser = clean(input.username, 60);
   const submittedPassword = encoder.encode(String(input.password || ""));
   const expectedBuffer = encoder.encode(expectedPassword);
-  const userOk = submittedUser.toLowerCase() === expectedUser.toLowerCase();
+  const userOk = expectedUser.length > 0 && submittedUser.toLowerCase() === expectedUser.toLowerCase();
   let difference = submittedPassword.length ^ expectedBuffer.length;
   const length = Math.max(submittedPassword.length, expectedBuffer.length);
   for (let i = 0; i < length; i++) difference |= (submittedPassword[i] || 0) ^ (expectedBuffer[i] || 0);
@@ -212,7 +211,7 @@ async function dashboard(env, actor) {
     db(env, "rota_blacklist?select=id,character_name,player_id,reason,created_by_name,created_by_login,created_at,photo_url&is_active=eq.true&order=created_at.desc&limit=500", "GET").catch(() => [])
   ]);
   const identities = await identitiesFor(env, officers || []).catch(() => ({}));
-  const result = { identities, auditLog: auditLog || [], blacklistAdmin: blacklistAdmin || [], userPermissions: userPermissions || [], rules, rankHistory: rankHistory || [], areas: AREAS, ranks: RANKS, actorLevel: actor ? actor.level : 99, actorRank: actor ? actor.rank : "", requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues, tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), userTags: userTags || [], tagLog: tagLog || [], catalog: PERMISSIONS };
+  const result = { identities, auditLog: auditLog || [], blacklistAdmin: blacklistAdmin || [], userPermissions: userPermissions || [], rules, rankHistory: rankHistory || [], areas: AREAS, ranks: RANKS, actorLevel: actor ? actor.level : ADMIN_LEVEL, actorRank: actor ? actor.rank : "", requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues, tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), userTags: userTags || [], tagLog: tagLog || [], catalog: PERMISSIONS };
   // Quem entra por tag só recebe os dados das áreas que pode gerenciar.
   if (actor && actor.role !== "admin") {
     const can = (p) => actor.permissions.includes(p), people = can("acessos.gerenciar") || can("tags.gerenciar");
@@ -222,6 +221,10 @@ async function dashboard(env, actor) {
     if (!can("tags.gerenciar")) result.tagLog = [];
     if (!can("blacklist.gerenciar")) result.blacklistAdmin = [];
     if (!can("acessos.gerenciar") && !can("integrantes.remover") && !can("blacklist.gerenciar")) result.auditLog = [];
+    const open = allowedAreas(actor, rules);
+    if (!open.includes("bo.ver")) { result.boTickets = []; result.pendingBoCount = 0; }
+    if (!open.includes("ouvidoria.ver")) { result.ouvidoriaTickets = []; result.pendingOuvidoriaCount = 0; }
+    if (!open.includes("prisoes.ver")) result.arrests = [];
     result.permissions = actor.permissions;
   }
   return result;
@@ -261,7 +264,7 @@ async function assertOutranks(env, actor, userId) {
 
 async function permAssign(env, actor, actorName, input, grant) {
   const userId = clean(input.userId, 80), permission = clean(input.permission, 60);
-  if (!PERMISSIONS[permission]) throw fail(400, "Poder inválido.");
+  if (!Object.hasOwn(PERMISSIONS, permission)) throw fail(400, "Poder inválido.");
   if (!canHandle(actor, [permission])) throw fail(403, "Você só pode " + (grant ? "dar" : "tirar") + " poderes que você mesmo tem.");
   const target = await assertOutranks(env, actor, userId);
   if (grant) await db(env, "rota_user_permissions", "POST", { user_id: userId, permission, granted_by: actorName }, "resolution=ignore-duplicates,return=minimal");
@@ -293,8 +296,10 @@ async function suspendAccount(env, actor, actorName, input, suspend) {
 
 async function rankRulesSave(env, actor, actorName, input) {
   const area = clean(input.area, 40), minRank = clean(input.minRank, 40);
-  if (!AREAS[area]) throw fail(400, "Área inválida.");
+  if (!Object.hasOwn(AREAS, area)) throw fail(400, "Área inválida.");
   if (!RANKS.includes(minRank)) throw fail(400, "Patente inválida.");
+  // Ninguém exige para uma área uma patente acima da própria (isso bloquearia os superiores).
+  if (actor.role !== "admin" && rankLevel(minRank) > actor.level) throw fail(403, "Você só pode exigir até a sua própria patente.");
   await db(env, "rota_area_rules", "POST", { area, min_rank: minRank, updated_by: actorName, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
   await logTag(env, { action: "regra", actor: actorName, tag_name: AREAS[area], details: { minRank } });
   return { ok: true };
@@ -308,6 +313,7 @@ export async function revokeSessions(env, userId) {
 // Senha própria: criada no primeiro login com o token. Depois o token não vale mais (vira só recuperação).
 async function setOwnPassword(request, env, input) {
   const member = await requireAccount(request, env);
+  if (member.must_set_password === false) throw fail(403, "A sua senha já foi criada. Para trocar, peça a troca de token ao comando.");
   const password = String(input.password || "");
   if (password.length < 8) throw fail(400, "A senha precisa ter pelo menos 8 caracteres.");
   if (password.length > 72) throw fail(400, "A senha pode ter no máximo 72 caracteres.");
@@ -318,7 +324,7 @@ async function setOwnPassword(request, env, input) {
   await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(member.user_id), { method: "PUT", body: JSON.stringify({ password }) });
   await db(env, "police_users?user_id=eq." + encodeURIComponent(member.user_id), "PATCH", { must_set_password: false }, "return=minimal");
   // Trocar a senha encerra as sessões da conta: entrega uma sessão nova para quem acabou de criar a senha.
-  const session = await callSupabase(env, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: syntheticEmail(member.normalized_name), password }) }, true);
+  const session = await callSupabase(env, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: member.login_email || syntheticEmail(member.normalized_name), password }) }, true);
   session.user.user_metadata = { ...(session.user.user_metadata || {}), full_name: member.display_name, role: member.role };
   return { ok: true, session };
 }
@@ -338,9 +344,15 @@ async function myProfile(env, actor) {
   return { identity: (await identitiesByIds(env, [actor.id]))[actor.id] || null, role: actor.role, mustSetPassword: actor.mustSetPassword, mustSetLoginId: !actor.loginId, loginId: actor.loginId, name: actor.name, permissions: actor.permissions, direct: actor.direct, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster, rank: actor.rank || "Recruta", level: actor.level, areas: allowedAreas(actor, rules) };
 }
 
-async function tagsList(env) {
-  const tags = await db(env, "rota_tags?select=id,name,description,permissions,created_by,updated_at&order=name.asc", "GET");
-  return { tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), catalog: PERMISSIONS };
+// Quem edita ou apaga uma tag precisa estar acima de todos que a usam.
+async function assertTagHoldersBelow(env, actor, tagId) {
+  if (actor.role === "admin") return;
+  const links = await db(env, "rota_user_tags?select=user_id&tag_id=eq." + encodeURIComponent(tagId), "GET").catch(() => []);
+  for (const link of links || []) {
+    if (link.user_id === actor.id) continue;
+    const target = await accountLevel(env, link.user_id).catch(() => null);
+    if (target && !outranks(actor, target.level)) throw fail(403, "Esta tag é usada por alguém de patente igual ou maior que a sua (" + target.name + ").");
+  }
 }
 
 async function tagSave(env, actor, actorName, input) {
@@ -353,6 +365,7 @@ async function tagSave(env, actor, actorName, input) {
     const existing = await db(env, "rota_tags?select=id,permissions&id=eq." + encodeURIComponent(id) + "&limit=1", "GET");
     if (!existing.length) throw fail(404, "Tag não encontrada.");
     if (!canHandle(actor, validPermissions(existing[0].permissions))) throw fail(403, "Esta tag tem permissões que você não tem; só quem tem todas pode editá-la.");
+    await assertTagHoldersBelow(env, actor, id);
     try {
       const rows = await db(env, "rota_tags?id=eq." + encodeURIComponent(id), "PATCH", { name, description, permissions, updated_at: new Date().toISOString() }, "return=representation");
       await logTag(env, { action: "editar", actor: actorName, tag_id: id, tag_name: name, details: { permissions } });
@@ -379,6 +392,7 @@ async function tagDelete(env, actor, actorName, input) {
   const existing = await db(env, "rota_tags?select=id,name,permissions&id=eq." + encodeURIComponent(id) + "&limit=1", "GET");
   if (!existing.length) throw fail(404, "Tag não encontrada.");
   if (!canHandle(actor, validPermissions(existing[0].permissions))) throw fail(403, "Esta tag tem permissões que você não tem; só quem tem todas pode apagá-la.");
+  await assertTagHoldersBelow(env, actor, id);
   await db(env, "rota_tags?id=eq." + encodeURIComponent(id), "DELETE", undefined, "return=minimal");
   await logTag(env, { action: "apagar", actor: actorName, tag_id: id, tag_name: existing[0].name });
   return { ok: true };
@@ -436,7 +450,7 @@ const ACTION_PERMISSION = {
   "account-edit": "acessos.gerenciar",
   "member-remove": "integrantes.remover"
 };
-const MANAGE_ACTIONS = ["admin-dashboard", "tags-list"];
+const MANAGE_ACTIONS = ["admin-dashboard"];
 
 async function handleAdmin(request, env, input) {
   if (input.action === "admin-session") { await requireAdmin(request, env, "Sessão administrativa inválida ou expirada."); return { valid: true }; }
@@ -451,7 +465,7 @@ async function handleAdmin(request, env, input) {
   if (input.action === "my-profile") {
     if (!request.headers.get("x-rota-admin-session")) {
       const member = await requireAccount(request, env);
-      if (member.role !== "policial" || !member.roster_id) return { identity: (await identitiesByIds(env, [member.user_id]))[member.user_id] || null, role: member.role === "policial" ? "visitante" : member.role, mustSetPassword: member.must_set_password !== false, mustSetLoginId: !member.login_id, loginId: member.login_id || "", name: member.display_name || "", permissions: [], tags: [], roster: null, rank: "", level: -1, areas: [] };
+      if (member.role !== "policial" || !member.roster_id || member.must_set_password !== false) return { identity: (await identitiesByIds(env, [member.user_id]))[member.user_id] || null, role: member.role === "policial" && !member.roster_id ? "visitante" : member.role, mustSetPassword: member.must_set_password !== false, mustSetLoginId: !member.login_id, loginId: member.login_id || "", name: member.display_name || "", permissions: [], tags: [], roster: null, rank: "", level: -1, areas: [] };
     }
     return myProfile(env, await requireStaff(request, env));
   }
@@ -463,7 +477,6 @@ async function handleAdmin(request, env, input) {
   }
   const actorName = isServerAdmin ? "Administração" : (actor.name || "Integrante");
   if (input.action === "admin-dashboard") return dashboard(env, actor);
-  if (input.action === "tags-list") return tagsList(env);
   if (input.action === "tag-save") return tagSave(env, actor, actorName, input);
   if (input.action === "tag-delete") return tagDelete(env, actor, actorName, input);
   if (input.action === "tag-grant" || input.action === "tag-revoke") return tagAssign(env, actor, actorName, input, input.action === "tag-grant");
@@ -498,27 +511,10 @@ async function handleAdmin(request, env, input) {
     const requests = await db(env, "access_requests?select=id,display_name,normalized_name,request_type,status&id=eq." + encodeURIComponent(id) + "&limit=1", "GET");
     if (!requests.length || requests[0].status !== "Pendente") throw fail(409, "Solicitação não encontrada ou já analisada.");
     const requestRow = requests[0];
-    if (requestRow.request_type === "acesso" && decision === "Aprovado") {
-      const existing = await db(env, "police_users?select=user_id&normalized_name=eq." + encodeURIComponent(requestRow.normalized_name) + "&limit=1", "GET");
-      if (existing.length) throw fail(409, "Já existe uma conta policial com este nome. Use a opção de troca de token.");
-      const token = randomToken();
-      let created;
-      try {
-        created = await callSupabase(env, "/auth/v1/admin/users", { method: "POST", body: JSON.stringify({ email: syntheticEmail(requestRow.normalized_name), password: token, email_confirm: true, user_metadata: { full_name: requestRow.display_name, name: requestRow.display_name, role: "visitante" }, app_metadata: { role: "visitante" } }) });
-        await db(env, "police_users", "POST", { user_id: created.id, display_name: requestRow.display_name, normalized_name: requestRow.normalized_name, login_email: syntheticEmail(requestRow.normalized_name), role: "visitante", enabled: true }, "return=minimal");
-        await db(env, "access_requests?id=eq." + encodeURIComponent(id), "PATCH", { status: "Aprovado", decided_at: new Date().toISOString() }, "return=minimal");
-      } catch (error) {
-        if (created && created.id) {
-          await db(env, "police_users?user_id=eq." + encodeURIComponent(created.id), "DELETE", undefined, "return=minimal").catch(() => {});
-          await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(created.id), { method: "DELETE" }).catch(() => {});
-        }
-        throw error;
-      }
-      return { ok: true, displayName: requestRow.display_name, token };
-    }
     if (requestRow.request_type === "troca_token" && decision === "Aprovado") {
       const account = await db(env, "police_users?select=user_id,enabled&normalized_name=eq." + encodeURIComponent(requestRow.normalized_name) + "&limit=1", "GET");
       if (!account.length) throw fail(404, "Não há conta policial para este pedido de troca.");
+      await assertOutranks(env, actor, account[0].user_id);
       return issueForOfficer(env, account[0].user_id, true);
     }
     await db(env, "access_requests?id=eq." + encodeURIComponent(id), "PATCH", { status: decision, decided_at: new Date().toISOString() }, "return=minimal");
@@ -549,8 +545,7 @@ export async function handlePoliceAccess(request, env) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return json(400, { error: "Dados inválidos." });
   try {
     let result;
-    if (input.action === "request-access") result = await createAccessRequest(env, input, "acesso");
-    else if (input.action === "request-reset") result = await createAccessRequest(env, input, "troca_token");
+    if (input.action === "request-reset") result = await createAccessRequest(env, input, "troca_token");
     else if (input.action === "officer-login") result = await officerLogin(env, input, request);
     else if (input.action === "admin-login") result = await adminLogin(env, input, request);
     else result = await handleAdmin(request, env, input);
