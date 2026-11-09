@@ -12,8 +12,11 @@ const EXPIRE_MS = 15 * 60 * 1000;     // quem sai da sala por 15 min perde a vez
 const CLAIM_MS = 10 * 60 * 1000;      // atendimento parado por 10 min volta para a fila
 const MAX_OPEN = 60;
 const OPEN = "status=in.(Pendente,Em%20atendimento)";
-const REQUEST_FIELDS = "id,display_name,normalized_name,passport,purpose,note,status,created_at,last_seen_at,claimed_by,claimed_name,claimed_at,decided_by,decided_at,granted_role,granted_rank,refusal_reason,user_id,picked_up_at";
+const REQUEST_FIELDS = "id,age,age_checked_by,display_name,normalized_name,passport,purpose,note,status,created_at,last_seen_at,claimed_by,claimed_name,claimed_at,decided_by,decided_at,granted_role,granted_rank,refusal_reason,user_id,picked_up_at";
 const encoder = new TextEncoder();
+// Nome e sobrenome do personagem: duas palavras só com letras (acentos, apóstrofo e hífen permitidos).
+const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]+ [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]+$/;
+const AGE_REVIEW = 16;
 
 async function hashTicket(ticket) {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode("rota-recepcao|" + ticket));
@@ -97,8 +100,12 @@ async function join(request, env, input) {
   const normalized = account ? account.normalized_name : normalizeName(name);
   const passport = clean(input.passport, 20), note = clean(input.note, 300, true);
   const purpose = account ? "ingressar" : (input.purpose === "ingressar" ? "ingressar" : "visitar");
-  if (name.length < 2 || normalized.length < 2) throw fail(400, "Informe seu nome no jogo.");
-  if (!/^[0-9A-Za-z-]{1,20}$/.test(passport)) throw fail(400, "Informe o número do passaporte (ID) do seu personagem.");
+  if (!account && !NAME_RE.test(name)) throw fail(400, "Informe só o nome e o sobrenome do seu personagem na cidade (ex.: João Silva), sem números nem apelidos.");
+  if (name.length < 2 || normalized.length < 2) throw fail(400, "Informe o nome do seu personagem na cidade.");
+  if (!/^\d{1,10}$/.test(passport)) throw fail(400, "O passaporte (ID no servidor) tem só números.");
+  const age = Number(input.age);
+  if (!Number.isInteger(age) || age < 1 || age > 99) throw fail(400, "Informe a sua idade real.");
+  if (age < 15) throw fail(403, "A idade mínima para ter conta no portal é 15 anos.");
   if (!account) {
     const existing = await db(env, "police_users?select=user_id&normalized_name=eq." + encodeURIComponent(normalized) + "&limit=1", "GET");
     if (existing.length) throw fail(409, "Já existe uma conta com este nome. Entre com o seu token ou peça a troca de token.");
@@ -114,7 +121,7 @@ async function join(request, env, input) {
   const ticket = randomToken() + randomToken();
   const now = new Date().toISOString();
   try {
-    await db(env, "access_requests", "POST", { display_name: name, normalized_name: normalized, request_type: "acesso", status: "Pendente", passport, purpose, note, ticket_hash: await hashTicket(ticket), last_seen_at: now, user_id: account ? account.user_id : null }, "return=minimal");
+    await db(env, "access_requests", "POST", { display_name: name, normalized_name: normalized, request_type: "acesso", status: "Pendente", passport, purpose, note, age, ticket_hash: await hashTicket(ticket), last_seen_at: now, user_id: account ? account.user_id : null }, "return=minimal");
   } catch (error) {
     if (error.status === 409 || /duplicate|unique/i.test(error.message)) throw fail(409, "Já há um pedido aberto com este nome.");
     throw error;
@@ -138,7 +145,7 @@ async function room(env, input) {
   const [queue, staff] = await Promise.all([openQueue(env), responsibles(env)]);
   const index = queue.findIndex((row) => row.id === me.id);
   return {
-    me: { name: me.display_name, purpose: me.purpose, status: index < 0 && isOpen ? "Desistiu" : me.status, position: index + 1, waitingMinutes: minutes(me), attendedBy: me.claimed_name || "", decidedBy: me.decided_by || "", grantedRole: me.granted_role || "", grantedRank: me.granted_rank || "", refusalReason: me.refusal_reason || "", readyToPickUp: me.status === "Aprovado" && !me.picked_up_at && !!me.user_id, pickedUp: !!me.picked_up_at },
+    me: { name: me.display_name, purpose: me.purpose, ageReview: me.age != null && me.age <= AGE_REVIEW, status: index < 0 && isOpen ? "Desistiu" : me.status, position: index + 1, waitingMinutes: minutes(me), attendedBy: me.claimed_name || "", decidedBy: me.decided_by || "", grantedRole: me.granted_role || "", grantedRank: me.granted_rank || "", refusalReason: me.refusal_reason || "", readyToPickUp: me.status === "Aprovado" && !me.picked_up_at && !!me.user_id, pickedUp: !!me.picked_up_at },
     queue: queue.map((row, i) => publicRow(row, i, row.id === me.id)),
     staff
   };
@@ -178,7 +185,7 @@ async function staffQueue(env, actor) {
   const [queue, staff] = await Promise.all([openQueue(env), responsibles(env)]);
   const myName = staffName(actor);
   return {
-    queue: queue.map((row, i) => ({ id: row.id, position: i + 1, name: row.display_name, passport: row.passport, purpose: row.purpose, note: row.note, createdAt: row.created_at, waitingMinutes: minutes(row), online: online(row), status: row.status, attendedBy: row.claimed_name || "", attendedByMe: row.status === "Em atendimento" && (actor.id ? row.claimed_by === actor.id : row.claimed_name === myName), existingAccount: !!row.user_id })),
+    queue: queue.map((row, i) => ({ id: row.id, position: i + 1, name: row.display_name, passport: row.passport, age: row.age, ageReview: row.age != null && row.age <= AGE_REVIEW, purpose: row.purpose, note: row.note, createdAt: row.created_at, waitingMinutes: minutes(row), online: online(row), status: row.status, attendedBy: row.claimed_name || "", attendedByMe: row.status === "Em atendimento" && (actor.id ? row.claimed_by === actor.id : row.claimed_name === myName), existingAccount: !!row.user_id })),
     staff,
     grantableRanks: grantableRanks(actor)
   };
@@ -240,6 +247,7 @@ async function decide(env, actor, input) {
     return { ok: true };
   }
   if (input.decision !== "aprovar") throw fail(400, "Decisão inválida.");
+  if (row.age != null && row.age <= AGE_REVIEW && input.ageChecked !== true) throw fail(400, "Este solicitante tem " + row.age + " anos: confirme que verificou a idade antes de aprovar.");
   const role = input.role === "policial" ? "policial" : "visitante";
   if (!row.user_id) {
     const taken = await db(env, "police_users?select=user_id&normalized_name=eq." + encodeURIComponent(row.normalized_name) + "&limit=1", "GET");
@@ -276,8 +284,8 @@ async function decide(env, actor, input) {
   }
   // Conta que já existia (visitante pedindo ingresso) não precisa de token novo.
   const existed = !!row.user_id;
-  await db(env, "access_requests?id=eq." + encodeURIComponent(row.id), "PATCH", { status: "Aprovado", decided_by: actorName, decided_at: now, granted_role: role, granted_rank: rank, user_id: userId, picked_up_at: existed ? now : null }, "return=minimal");
-  await logTag(env, { action: "recepcao-aprovar", actor: actorName, target_user: userId, target_name: row.display_name, details: { role, rank } }).catch(() => {});
+  await db(env, "access_requests?id=eq." + encodeURIComponent(row.id), "PATCH", { status: "Aprovado", decided_by: actorName, decided_at: now, granted_role: role, granted_rank: rank, user_id: userId, age_checked_by: row.age != null && row.age <= AGE_REVIEW ? actorName : "", picked_up_at: existed ? now : null }, "return=minimal");
+  await logTag(env, { action: "recepcao-aprovar", actor: actorName, target_user: userId, target_name: row.display_name, details: { role, rank, age: row.age, ageChecked: row.age != null && row.age <= AGE_REVIEW } }).catch(() => {});
   await notify(env);
   return { ok: true, role, rank };
 }

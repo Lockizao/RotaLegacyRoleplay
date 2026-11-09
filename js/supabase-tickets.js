@@ -6,18 +6,39 @@
   var key = String(config.publishableKey || "").trim();
   var SESSION_KEY = "rota-supabase-officer-session";
   var ADMIN_KEY = "rota-admin-session";
+  var REMEMBER_KEY = "rota-manter-conectado", LAST_USE_KEY = "rota-ultimo-uso", MAX_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
   var current = readSession();
   var adminToken = sessionStorage.getItem(ADMIN_KEY) || "";
   var profile = null;
 
+  // "Manter conectado": a sessão fica no localStorage e vale até 30 dias sem uso; sem a opção, só nesta aba.
+  var passwordPending = false;
+  function remembering() { try { return localStorage.getItem(REMEMBER_KEY) === "1"; } catch (_) { return false; } }
+  function touchLastUse() { try { if (remembering()) localStorage.setItem(LAST_USE_KEY, String(Date.now())); } catch (_) {} }
   function readSession() {
-    try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); }
-    catch (_) { return null; }
+    try {
+      var tab = sessionStorage.getItem(SESSION_KEY);
+      if (tab) return JSON.parse(tab);
+      if (!remembering()) return null;
+      if (Date.now() - Number(localStorage.getItem(LAST_USE_KEY) || 0) > MAX_IDLE_MS) {
+        localStorage.removeItem(SESSION_KEY); localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(LAST_USE_KEY);
+        return null;
+      }
+      return JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    } catch (_) { return null; }
   }
   function saveSession(session) {
     current = session;
-    if (session) sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    else sessionStorage.removeItem(SESSION_KEY);
+    try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY); } catch (_) {}
+    if (session) {
+      var raw = JSON.stringify(session);
+      try {
+        if (remembering()) { localStorage.setItem(SESSION_KEY, raw); touchLastUse(); }
+        else sessionStorage.setItem(SESSION_KEY, raw);
+      } catch (_) {}
+    } else {
+      try { localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(LAST_USE_KEY); } catch (_) {}
+    }
   }
   // Revoga a sessão do policial no Supabase (o refresh_token deixa de valer) antes de limpar o navegador.
   function signOut() {
@@ -69,6 +90,8 @@
     catch (error) {
       // Conta suspensa no meio da sessão: sai e leva o motivo para a tela de login.
       if (/suspensa/i.test(error.message || "")) { signOut(); try { sessionStorage.setItem("rota-suspensao", error.message); } catch (_) {} throw error; }
+      // Sessão derrubada (troca de token, desativação) ou conta removida: sai do aparelho.
+      if (/Sessão inválida|expirada|não está autorizada/i.test(error.message || "")) { signOut(); throw error; }
       profile = { permissions: [], tags: [], roster: null, areas: [] };
     }
     return profile;
@@ -192,11 +215,12 @@
       if (current.expires_at && current.expires_at < Date.now() + 60000) await refreshSession();
       var ok = await policeMembership(current);
       if (!ok) saveSession(null);
-      else await loadProfile();
+      else { await loadProfile(); touchLastUse(); }
       return ok;
-    } catch (_) { return false; }
+    } catch (_) { saveSession(null); return false; }
   }
-  async function signIn(name, token) {
+  async function signIn(name, token, remember) {
+    try { if (remember) localStorage.setItem(REMEMBER_KEY, "1"); else localStorage.removeItem(REMEMBER_KEY); } catch (_) {}
     if (!isConfigured()) throw new Error("Configure a URL e a chave publishable em js/supabase-config.js e publique as funções do portal.");
     var body = await functionCall("officer-login", { name: String(name || "").trim(), token: String(token || "") });
     var session = body.session;
@@ -205,8 +229,21 @@
     adminToken = "";
     sessionStorage.removeItem(ADMIN_KEY);
     saveSession(session);
+    passwordPending = !!body.mustSetPassword;
     await loadProfile();
     return session;
+  }
+  function needsPassword() {
+    return !!(current && current.access_token && current.access_token !== "admin" && (passwordPending || (profile && profile.mustSetPassword)));
+  }
+  async function setPassword(password) {
+    var result = await functionCall("set-password", { password: String(password || "") }, true);
+    if (result && result.session && result.session.access_token) {
+      result.session.expires_at = Date.now() + (Number(result.session.expires_in) || 3600) * 1000;
+      saveSession(result.session);
+    }
+    passwordPending = false;
+    if (profile) profile.mustSetPassword = false;
   }
   async function adminLogin(username, password) {
     var body = await functionCall("admin-login", { username: String(username || "").trim(), password: String(password || "") });
@@ -411,6 +448,8 @@
     canManage: canManage,
     canArea: canArea,
     isVisitor: isVisitor,
+    needsPassword: needsPassword,
+    setPassword: setPassword,
     receptionCall: receptionCall,
     adoptSession: adoptSession,
     onReception: onReception,

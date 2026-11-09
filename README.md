@@ -39,6 +39,8 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
 
    Para a **recepção da delegacia** (sala de espera com fila, balcão de quem libera acesso e entrega do token na própria sala), execute `supabase/recepcao.sql` depois do `patentes.sql`. Ele separa as contas em **visitante** (cidadão: só o portal público) e **integrante** (policial com ficha do efetivo); contas policiais sem ficha vinculada viram visitante, então vincule antes. O tempo real usa o Realtime do Supabase (canal público `rota-recepcao`); sem ele, as telas se atualizam a cada 15 segundos.
 
+   Para **senha própria, manter conectado e idade na recepção**, execute `supabase/senhas.sql` depois do `recepcao.sql`. No primeiro login com o token, cada conta cria a própria senha (o token vira só recuperação). Troca de token, suspensão e desativação derrubam as sessões salvas na hora.
+
    Para **Comunicados** e **Editais**, execute `supabase/public-content.sql`. A administração publica e remove os dois pelo **Painel policial** (botões "Publicar comunicado" e "Publicar edital"), sem precisar editar o código. As inscrições só são aceitas para editais publicados e dentro do período de inscrição.
 
    Ao atualizar o portal, execute de novo o `supabase/schema.sql`: ele pode ser reexecutado com segurança e aplica as proteções novas (decisão única de tickets, limite de pedidos e bloqueio de tentativas de login administrativo).

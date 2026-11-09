@@ -83,17 +83,17 @@ async function createAccessRequest(env, input, requestType) {
 async function officerLogin(env, input) {
   const normalized = normalizeName(input.name);
   const token = clean(input.token, 100);
-  if (normalized.length < 2 || token.length < 12) throw fail(400, "Informe seu nome e o token recebido da administração.");
+  if (normalized.length < 2 || token.length < 8) throw fail(400, "Informe o nome da sua conta e a sua senha (ou o token recebido na recepção).");
   let session;
   try {
     session = await callSupabase(env, "/auth/v1/token?grant_type=password", {
       method: "POST", body: JSON.stringify({ email: syntheticEmail(normalized), password: token })
     }, true);
   } catch (error) {
-    if (error.status === 400 || error.status === 401) throw fail(401, "Nome ou token incorreto. Se esqueceu o token, solicite uma troca.");
+    if (error.status === 400 || error.status === 401) throw fail(401, "Nome, senha ou token incorreto. Se esqueceu, peça a troca de token.");
     throw error;
   }
-  const members = await db(env, "police_users?select=user_id,display_name,normalized_name,role,enabled,suspended_until,suspension_reason&user_id=eq." + encodeURIComponent(session.user.id) + "&enabled=eq.true", "GET");
+  const members = await db(env, "police_users?select=user_id,display_name,normalized_name,role,enabled,suspended_until,suspension_reason,must_set_password&user_id=eq." + encodeURIComponent(session.user.id) + "&enabled=eq.true", "GET");
   if (!Array.isArray(members) || !members.length) throw fail(403, "Esta conta não está autorizada. Peça aprovação à administração.");
   assertNotSuspended(members[0]);
   await db(env, "login_events", "POST", { user_id: session.user.id, display_name: members[0].display_name, role: members[0].role || "policial", logged_at: new Date().toISOString() }, "return=minimal");
@@ -101,7 +101,7 @@ async function officerLogin(env, input) {
   session.user.user_metadata = session.user.user_metadata || {};
   session.user.user_metadata.full_name = members[0].display_name;
   session.user.user_metadata.role = members[0].role || "visitante";
-  return { session };
+  return { session, mustSetPassword: members[0].must_set_password !== false };
 }
 
 const ADMIN_LOCK_MINUTES = 15;
@@ -210,6 +210,8 @@ async function issueForOfficer(env, userId, reactivate) {
   if (!rows[0].enabled && !reactivate) throw fail(409, "Esta conta está desativada. Reative antes de trocar o token.");
   const token = randomToken();
   await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(userId), { method: "PUT", body: JSON.stringify({ password: token }) });
+  await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { must_set_password: true }, "return=minimal");
+  await revokeSessions(env, userId);
   if (!rows[0].enabled) await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { enabled: true }, "return=minimal");
   await db(env, "access_requests?normalized_name=eq." + encodeURIComponent(rows[0].normalized_name) + "&request_type=eq.troca_token&status=eq.Pendente", "PATCH", { status: "Aprovado", decided_at: new Date().toISOString() }, "return=minimal");
   return { ok: true, displayName: rows[0].display_name, token };
@@ -260,6 +262,7 @@ async function suspendAccount(env, actor, actorName, input, suspend) {
     details = { reason };
   }
   await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", change, "return=minimal");
+  if (suspend) await revokeSessions(env, userId);
   await logTag(env, { action: suspend ? "suspender" : "cancelar-suspensao", actor: actorName, target_user: userId, target_name: target.name, details });
   return { ok: true };
 }
@@ -271,6 +274,29 @@ async function rankRulesSave(env, actor, actorName, input) {
   await db(env, "rota_area_rules", "POST", { area, min_rank: minRank, updated_by: actorName, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
   await logTag(env, { action: "regra", actor: actorName, tag_name: AREAS[area], details: { minRank } });
   return { ok: true };
+}
+
+// Derruba as sessões abertas da conta (o login salvo nos aparelhos deixa de valer).
+export async function revokeSessions(env, userId) {
+  await db(env, "rpc/rota_revoke_sessions", "POST", { uid: userId }).catch(() => {});
+}
+
+// Senha própria: criada no primeiro login com o token. Depois o token não vale mais (vira só recuperação).
+async function setOwnPassword(request, env, input) {
+  const member = await requireAccount(request, env);
+  const password = String(input.password || "");
+  if (password.length < 8) throw fail(400, "A senha precisa ter pelo menos 8 caracteres.");
+  if (password.length > 72) throw fail(400, "A senha pode ter no máximo 72 caracteres.");
+  if (/^\d+$/.test(password)) throw fail(400, "Use letras na senha, não só números.");
+  const plain = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const name = plain(member.display_name);
+  if (name.length >= 3 && plain(password).includes(name)) throw fail(400, "A senha não pode conter o seu nome.");
+  await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(member.user_id), { method: "PUT", body: JSON.stringify({ password }) });
+  await db(env, "police_users?user_id=eq." + encodeURIComponent(member.user_id), "PATCH", { must_set_password: false }, "return=minimal");
+  // Trocar a senha encerra as sessões da conta: entrega uma sessão nova para quem acabou de criar a senha.
+  const session = await callSupabase(env, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: syntheticEmail(member.normalized_name), password }) }, true);
+  session.user.user_metadata = { ...(session.user.user_metadata || {}), full_name: member.display_name, role: member.role };
+  return { ok: true, session };
 }
 
 export async function logTag(env, entry) {
@@ -285,7 +311,7 @@ async function myProfile(env, actor) {
     const rows = await db(env, "rota_roster?select=id,qra,full_name,rank,passport,status,photo_url&id=eq." + encodeURIComponent(actor.rosterId) + "&limit=1", "GET").catch(() => []);
     if (Array.isArray(rows) && rows.length) roster = { id: rows[0].id, qra: rows[0].qra, fullName: rows[0].full_name, rank: rows[0].rank, passport: rows[0].passport, status: rows[0].status, photoUrl: rows[0].photo_url || "" };
   }
-  return { role: actor.role, name: actor.name, permissions: actor.permissions, direct: actor.direct, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster, rank: actor.rank || "Recruta", level: actor.level, areas: allowedAreas(actor, rules) };
+  return { role: actor.role, mustSetPassword: actor.mustSetPassword, name: actor.name, permissions: actor.permissions, direct: actor.direct, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster, rank: actor.rank || "Recruta", level: actor.level, areas: allowedAreas(actor, rules) };
 }
 
 async function tagsList(env) {
@@ -388,10 +414,11 @@ const MANAGE_ACTIONS = ["admin-dashboard", "tags-list"];
 
 async function handleAdmin(request, env, input) {
   if (input.action === "admin-session") { await requireAdmin(request, env, "Sessão administrativa inválida ou expirada."); return { valid: true }; }
+  if (input.action === "set-password") return setOwnPassword(request, env, input);
   if (input.action === "my-profile") {
     if (!request.headers.get("x-rota-admin-session")) {
       const member = await requireAccount(request, env);
-      if (member.role !== "policial" || !member.roster_id) return { role: member.role === "policial" ? "visitante" : member.role, name: member.display_name || "", permissions: [], tags: [], roster: null, rank: "", level: -1, areas: [] };
+      if (member.role !== "policial" || !member.roster_id) return { role: member.role === "policial" ? "visitante" : member.role, mustSetPassword: member.must_set_password !== false, name: member.display_name || "", permissions: [], tags: [], roster: null, rank: "", level: -1, areas: [] };
     }
     return myProfile(env, await requireStaff(request, env));
   }
@@ -469,6 +496,7 @@ async function handleAdmin(request, env, input) {
     const rows = await db(env, "police_users?select=user_id,enabled&user_id=eq." + encodeURIComponent(userId) + "&limit=1", "GET");
     if (!rows.length) throw fail(404, "Conta não encontrada.");
     const updated = await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { enabled: !rows[0].enabled }, "return=representation");
+    if (rows[0].enabled) await revokeSessions(env, userId);
     return { officer: updated[0] };
   }
   throw fail(400, "Ação desconhecida.");
