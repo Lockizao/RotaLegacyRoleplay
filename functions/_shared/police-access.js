@@ -1,5 +1,6 @@
 import { clean, encodeBase64Url, fail, json, originError } from "./http.js";
-import { requireAdmin, signAdmin } from "./auth.js";
+import { requireAdmin, requireStaff, signAdmin } from "./auth.js";
+import { ALL_PERMISSIONS, PERMISSIONS, validPermissions } from "./permissions.js";
 const MAX_BODY_BYTES = 16000;
 const SESSION_SECONDS = 8 * 60 * 60;
 const encoder = new TextEncoder();
@@ -157,11 +158,11 @@ async function dashboardRows(env, key, path, issues) {
   }
 }
 
-async function dashboard(env) {
+async function dashboard(env, actor) {
   const issues = [];
   const [requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster] = await Promise.all([
     dashboardRows(env, "solicitações de acesso", "access_requests?select=id,display_name,normalized_name,request_type,status,created_at&order=created_at.desc&limit=150", issues),
-    dashboardRows(env, "contas policiais", "police_users?select=user_id,display_name,normalized_name,role,enabled,created_at&order=display_name.asc&limit=300", issues),
+    dashboardRows(env, "contas policiais", "police_users?select=user_id,display_name,normalized_name,role,enabled,created_at,roster_id&order=display_name.asc&limit=300", issues),
     dashboardRows(env, "histórico de acesso", "login_events?select=id,user_id,display_name,role,logged_at&order=logged_at.desc&limit=40", issues),
     dashboardRows(env, "B.O.", "bo_tickets?select=id,public_id,player,legacy_name,category,status,created_at&order=created_at.desc&limit=100", issues),
     dashboardRows(env, "Ouvidoria", "ouvidoria_tickets?select=id,public_id,player,legacy_name,category,status,created_at&order=created_at.desc&limit=100", issues),
@@ -177,7 +178,23 @@ async function dashboard(env) {
     dashboardRows(env, "Ouvidoria pendente", "ouvidoria_tickets?select=id&status=eq.Pendente&limit=10000", issues)
   ]);
 
-  return { requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues };
+  // Tags: quem as tem e o histórico recente. Sem tags.sql executado, as listas ficam vazias.
+  const [tags, userTags, tagLog] = await Promise.all([
+    db(env, "rota_tags?select=id,name,description,permissions,created_by,updated_at&order=name.asc", "GET").catch(() => []),
+    db(env, "rota_user_tags?select=user_id,tag_id,granted_by,granted_at", "GET").catch(() => []),
+    db(env, "rota_tag_log?select=id,action,actor,tag_name,target_name,created_at&order=created_at.desc&limit=40", "GET").catch(() => [])
+  ]);
+  const result = { requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues, tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), userTags: userTags || [], tagLog: tagLog || [], catalog: PERMISSIONS };
+  // Quem entra por tag só recebe os dados das áreas que pode gerenciar.
+  if (actor && actor.role !== "admin") {
+    const can = (p) => actor.permissions.includes(p), people = can("acessos.gerenciar") || can("tags.gerenciar");
+    if (!can("acessos.gerenciar")) { result.requests = []; result.logins = []; }
+    if (!people) result.officers = [];
+    if (!can("editais.gerenciar")) result.applications = [];
+    if (!can("tags.gerenciar")) result.tagLog = [];
+    result.permissions = actor.permissions;
+  }
+  return result;
 }
 
 async function issueForOfficer(env, userId, reactivate) {
@@ -191,10 +208,132 @@ async function issueForOfficer(env, userId, reactivate) {
   return { ok: true, displayName: rows[0].display_name, token };
 }
 
+// ---------- tags e perfil ----------
+
+function canHandle(actor, permissions) {
+  return actor.role === "admin" || permissions.every((p) => actor.permissions.includes(p));
+}
+
+async function logTag(env, entry) {
+  await db(env, "rota_tag_log", "POST", entry, "return=minimal").catch(() => {});
+}
+
+async function myProfile(env, actor) {
+  if (actor.role === "admin") return { role: "admin", name: "Administração", permissions: ALL_PERMISSIONS, tags: [], roster: null };
+  let roster = null;
+  if (actor.rosterId) {
+    const rows = await db(env, "rota_roster?select=id,qra,full_name,rank,passport,status,photo_url&id=eq." + encodeURIComponent(actor.rosterId) + "&limit=1", "GET").catch(() => []);
+    if (Array.isArray(rows) && rows.length) roster = { id: rows[0].id, qra: rows[0].qra, fullName: rows[0].full_name, rank: rows[0].rank, passport: rows[0].passport, status: rows[0].status, photoUrl: rows[0].photo_url || "" };
+  }
+  return { role: actor.role, name: actor.name, permissions: actor.permissions, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster };
+}
+
+async function tagsList(env) {
+  const tags = await db(env, "rota_tags?select=id,name,description,permissions,created_by,updated_at&order=name.asc", "GET");
+  return { tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), catalog: PERMISSIONS };
+}
+
+async function tagSave(env, actor, actorName, input) {
+  const name = clean(input.name, 40), description = clean(input.description, 200), permissions = validPermissions(input.permissions);
+  if (name.length < 2) throw fail(400, "Dê um nome para a tag.");
+  if (!permissions.length) throw fail(400, "Escolha ao menos uma permissão para a tag.");
+  if (!canHandle(actor, permissions)) throw fail(403, "Você só pode dar a uma tag permissões que você mesmo tem.");
+  const id = clean(input.id, 40);
+  if (id) {
+    const existing = await db(env, "rota_tags?select=id,permissions&id=eq." + encodeURIComponent(id) + "&limit=1", "GET");
+    if (!existing.length) throw fail(404, "Tag não encontrada.");
+    if (!canHandle(actor, validPermissions(existing[0].permissions))) throw fail(403, "Esta tag tem permissões que você não tem; só quem tem todas pode editá-la.");
+    try {
+      const rows = await db(env, "rota_tags?id=eq." + encodeURIComponent(id), "PATCH", { name, description, permissions, updated_at: new Date().toISOString() }, "return=representation");
+      await logTag(env, { action: "editar", actor: actorName, tag_id: id, tag_name: name, details: { permissions } });
+      return { tag: rows[0] };
+    } catch (error) {
+      if (error.status === 409 || /duplicate|unique/i.test(error.message)) throw fail(409, "Já existe uma tag com este nome.");
+      throw error;
+    }
+  }
+  const newId = normalizeName(name).slice(0, 40);
+  if (newId.length < 2) throw fail(400, "Use letras ou números no nome da tag.");
+  try {
+    const rows = await db(env, "rota_tags", "POST", { id: newId, name, description, permissions, created_by: actorName }, "return=representation");
+    await logTag(env, { action: "criar", actor: actorName, tag_id: newId, tag_name: name, details: { permissions } });
+    return { tag: rows[0] };
+  } catch (error) {
+    if (error.status === 409 || /duplicate|unique/i.test(error.message)) throw fail(409, "Já existe uma tag com este nome.");
+    throw error;
+  }
+}
+
+async function tagDelete(env, actor, actorName, input) {
+  const id = clean(input.id, 40);
+  const existing = await db(env, "rota_tags?select=id,name,permissions&id=eq." + encodeURIComponent(id) + "&limit=1", "GET");
+  if (!existing.length) throw fail(404, "Tag não encontrada.");
+  if (!canHandle(actor, validPermissions(existing[0].permissions))) throw fail(403, "Esta tag tem permissões que você não tem; só quem tem todas pode apagá-la.");
+  await db(env, "rota_tags?id=eq." + encodeURIComponent(id), "DELETE", undefined, "return=minimal");
+  await logTag(env, { action: "apagar", actor: actorName, tag_id: id, tag_name: existing[0].name });
+  return { ok: true };
+}
+
+async function tagAssign(env, actor, actorName, input, grant) {
+  const tagId = clean(input.tagId, 40), userId = clean(input.userId, 80);
+  const [tags, users] = await Promise.all([
+    db(env, "rota_tags?select=id,name,permissions&id=eq." + encodeURIComponent(tagId) + "&limit=1", "GET"),
+    db(env, "police_users?select=user_id,display_name&user_id=eq." + encodeURIComponent(userId) + "&limit=1", "GET")
+  ]);
+  if (!tags.length) throw fail(404, "Tag não encontrada.");
+  if (!users.length) throw fail(404, "Integrante não encontrado.");
+  if (!canHandle(actor, validPermissions(tags[0].permissions))) throw fail(403, "Você só pode " + (grant ? "dar" : "tirar") + " tags cujas permissões você mesmo tem.");
+  if (grant) await db(env, "rota_user_tags", "POST", { user_id: userId, tag_id: tagId, granted_by: actorName }, "resolution=ignore-duplicates,return=minimal");
+  else await db(env, "rota_user_tags?user_id=eq." + encodeURIComponent(userId) + "&tag_id=eq." + encodeURIComponent(tagId), "DELETE", undefined, "return=minimal");
+  await logTag(env, { action: grant ? "dar" : "tirar", actor: actorName, tag_id: tagId, tag_name: tags[0].name, target_user: userId, target_name: users[0].display_name });
+  return { ok: true };
+}
+
+async function officerLink(env, actorName, input) {
+  const userId = clean(input.userId, 80), rosterId = clean(input.rosterId, 36);
+  if (!userId) throw fail(400, "Conta inválida.");
+  if (rosterId && !/^[0-9a-f-]{36}$/i.test(rosterId)) throw fail(400, "Ficha do efetivo inválida.");
+  try {
+    const rows = await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { roster_id: rosterId || null }, "return=representation");
+    if (!rows.length) throw fail(404, "Conta não encontrada.");
+    await logTag(env, { action: "vincular", actor: actorName, target_user: userId, target_name: rows[0].display_name, details: { rosterId: rosterId || null } });
+    return { officer: rows[0] };
+  } catch (error) {
+    if (error.status === 409 || /duplicate|unique/i.test(error.message)) throw fail(409, "Esta ficha do efetivo já está ligada a outra conta.");
+    throw error;
+  }
+}
+
+// Permissão exigida por ação. Ações fora da lista são só do administrador do servidor.
+const ACTION_PERMISSION = {
+  "request-decide": "acessos.gerenciar",
+  "token-rotate": "acessos.gerenciar",
+  "officer-toggle": "acessos.gerenciar",
+  "officer-link": "acessos.gerenciar",
+  "edital-applications-list": "editais.gerenciar",
+  "tag-save": "tags.gerenciar",
+  "tag-delete": "tags.gerenciar",
+  "tag-grant": "tags.gerenciar",
+  "tag-revoke": "tags.gerenciar"
+};
+const MANAGE_ACTIONS = ["admin-dashboard", "tags-list"];
+
 async function handleAdmin(request, env, input) {
-  await requireAdmin(request, env, "Sessão administrativa inválida ou expirada.");
-  if (input.action === "admin-session") return { valid: true };
-  if (input.action === "admin-dashboard") return dashboard(env);
+  if (input.action === "admin-session") { await requireAdmin(request, env, "Sessão administrativa inválida ou expirada."); return { valid: true }; }
+  if (input.action === "my-profile") return myProfile(env, await requireStaff(request, env));
+  const actor = await requireStaff(request, env).catch((error) => { if (error.status === 401 && !request.headers.get("authorization")) throw fail(401, "Sessão administrativa inválida ou expirada."); throw error; });
+  const isServerAdmin = actor.role === "admin", needed = ACTION_PERMISSION[input.action];
+  if (!isServerAdmin) {
+    const allowed = needed ? actor.permissions.includes(needed) : MANAGE_ACTIONS.includes(input.action) && actor.permissions.length > 0;
+    if (!allowed) throw fail(403, "Sua conta não tem permissão para esta ação. Peça a tag correspondente ao comando.");
+  }
+  const actorName = isServerAdmin ? "Administração" : (actor.name || "Integrante");
+  if (input.action === "admin-dashboard") return dashboard(env, actor);
+  if (input.action === "tags-list") return tagsList(env);
+  if (input.action === "tag-save") return tagSave(env, actor, actorName, input);
+  if (input.action === "tag-delete") return tagDelete(env, actor, actorName, input);
+  if (input.action === "tag-grant" || input.action === "tag-revoke") return tagAssign(env, actor, actorName, input, input.action === "tag-grant");
+  if (input.action === "officer-link") return officerLink(env, actorName, input);
   if (input.action === "edital-applications-list") {
     const rows = await db(env, "edital_applications?select=id,edital_id,edital_title,full_name,server_rg,candidate_name,player_id,real_age,rp_experience,police_experience,roleplay_definition,metagaming_definition,powergaming_definition,why_pmce,character_story,status,created_at&order=created_at.desc&limit=200", "GET");
     return { rows: rows || [] };

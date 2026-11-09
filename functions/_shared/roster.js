@@ -1,5 +1,5 @@
 import { clean, fail, json, originError } from "./http.js";
-import { requireAdmin } from "./auth.js";
+import { requirePermission } from "./auth.js";
 import { supabase } from "./supabase.js";
 const PHOTO_BUCKET = "rota-roster-photos";
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
@@ -33,7 +33,7 @@ export async function handleRoster(request, env) {
       const rows = await supabase(env, "/rest/v1/rota_roster?select=id,qra,full_name,rank,passport,admitted_on,birth_date,status,photo_path,photo_url,created_at,updated_at&order=qra.asc&limit=500", { method: "GET" }, true);
       return json(200, { rows: (Array.isArray(rows) ? rows : []).map(toRow) });
     }
-    await requireAdmin(request, env);
+    await requirePermission(request, env, "efetivo.gerenciar");
     const text = await request.text();
     if (encoder.encode(text).byteLength > 12000) return json(413, { error: "Solicitação muito grande." });
     let input;
@@ -67,7 +67,7 @@ export async function handleRosterPhoto(request, env) {
   const rejected = originError(request);
   if (rejected) return json(403, { error: rejected });
   try {
-    await requireAdmin(request, env);
+    await requirePermission(request, env, "efetivo.gerenciar");
     const declaredSize = Number(request.headers.get("content-length") || 0);
     if (declaredSize > MAX_PHOTO_BYTES + 65536) return json(413, { error: "A foto deve ter no máximo 3 MB." });
     const form = await request.formData(), file = form.get("photo");
