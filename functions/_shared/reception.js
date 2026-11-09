@@ -38,6 +38,8 @@ async function notify(env) {
 
 // Limpa a fila: quem sumiu da sala perde a vez; atendimento esquecido volta a aguardar.
 async function tidy(env) {
+  // Pedidos do sistema antigo (sem presença registrada) também perdem a vez depois de 15 min.
+  await db(env, "access_requests?request_type=eq.acesso&status=eq.Pendente&last_seen_at=is.null&created_at=lt." + encodeURIComponent(iso(Date.now() - EXPIRE_MS)), "PATCH", { status: "Desistiu", decided_at: new Date().toISOString() }, "return=minimal").catch(() => {});
   await db(env, "access_requests?request_type=eq.acesso&status=eq.Pendente&last_seen_at=lt." + encodeURIComponent(iso(Date.now() - EXPIRE_MS)), "PATCH", { status: "Desistiu", decided_at: new Date().toISOString() }, "return=minimal").catch(() => {});
   await db(env, "access_requests?request_type=eq.acesso&status=eq.Em%20atendimento&claimed_at=lt." + encodeURIComponent(iso(Date.now() - CLAIM_MS)), "PATCH", { status: "Pendente", claimed_by: null, claimed_name: "", claimed_at: null }, "return=minimal").catch(() => {});
 }
