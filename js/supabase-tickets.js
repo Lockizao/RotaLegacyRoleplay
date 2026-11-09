@@ -66,11 +66,18 @@
   async function loadProfile() {
     if (!officerToken()) { profile = null; return null; }
     try { profile = await functionCall("my-profile", {}, true); }
-    catch (_) { profile = { permissions: [], tags: [], roster: null }; }
+    catch (error) {
+      // Conta suspensa no meio da sessão: sai e leva o motivo para a tela de login.
+      if (/suspensa/i.test(error.message || "")) { signOut(); try { sessionStorage.setItem("rota-suspensao", error.message); } catch (_) {} throw error; }
+      profile = { permissions: [], tags: [], roster: null, areas: [] };
+    }
     return profile;
   }
   function can(permission) {
     return isAdmin() || !!(profile && Array.isArray(profile.permissions) && profile.permissions.indexOf(permission) !== -1);
+  }
+  function canArea(area) {
+    return isAdmin() || !!(profile && Array.isArray(profile.areas) && profile.areas.indexOf(area) !== -1);
   }
   function canManage() {
     return isAdmin() || !!(profile && Array.isArray(profile.permissions) && profile.permissions.length);
@@ -348,6 +355,7 @@
     isAdmin: isAdmin,
     can: can,
     canManage: canManage,
+    canArea: canArea,
     profile: function () { return profile; },
     loadProfile: loadProfile,
     restore: validSession,

@@ -1020,3 +1020,22 @@ button.link:hover,.home-block-head .link:hover,a:hover{text-decoration-color:var
 .profile-id small{grid-column:1/-1;color:var(--nevoa)}
 .profile-card .tag{font-size:12px;padding:4px 8px}
 @media (max-width:1099px){.tag-admin{grid-template-columns:1fr}}
+
+/* ================= patentes e hierarquia ================= */
+.officer-rank{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.officer-rank b{color:var(--faixa);font-weight:600}
+.officer-rank small{color:var(--nevoa)}
+.officer-tools{display:flex;gap:8px;flex-wrap:wrap}
+.officer-tools button{min-height:38px;padding:7px 12px;font-size:14px}
+.profile-id{grid-template-columns:auto 1fr auto}
+.profile-id .rank-insignia{grid-row:1/span 2;width:30px;height:34px}
+.profile-id small{grid-column:2/-1}
+.rules-intro{padding:16px 16px 4px}
+.rules-table th[scope=row]{color:var(--faixa);font-weight:600}
+.rules-table select{width:auto;min-width:200px}
+.rules-table button{min-height:36px;padding:6px 12px;font-size:14px}
+button.danger-fill{background:var(--sirene);border-color:var(--sirene);color:var(--faixa)}
+button.danger-fill:hover{background:#e3363e;border-color:#e3363e}
+.officer-tags,.officer-tags>*,.tag-grant{min-width:0;max-width:100%}
+.tag-grant select{min-width:0;max-width:100%;width:100%}
+*:has(>.officer-tags){min-width:0}

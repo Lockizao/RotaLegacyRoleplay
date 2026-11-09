@@ -1,5 +1,6 @@
 import { clean, fail, json, originError } from "./http.js";
-import { requirePermission } from "./auth.js";
+import { outranks, requirePermission } from "./auth.js";
+import { RANKS, rankLevel } from "./permissions.js";
 import { supabase } from "./supabase.js";
 const PHOTO_BUCKET = "rota-roster-photos";
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
@@ -33,7 +34,7 @@ export async function handleRoster(request, env) {
       const rows = await supabase(env, "/rest/v1/rota_roster?select=id,qra,full_name,rank,passport,admitted_on,birth_date,status,photo_path,photo_url,created_at,updated_at&order=qra.asc&limit=500", { method: "GET" }, true);
       return json(200, { rows: (Array.isArray(rows) ? rows : []).map(toRow) });
     }
-    await requirePermission(request, env, "efetivo.gerenciar");
+    const staff = await requirePermission(request, env, "efetivo.gerenciar");
     const text = await request.text();
     if (encoder.encode(text).byteLength > 12000) return json(413, { error: "Solicitação muito grande." });
     let input;
@@ -45,16 +46,29 @@ export async function handleRoster(request, env) {
     const photoPath = clean(input.photoPath, 64);
     let existing = null;
     if (id) {
-      const prior = await supabase(env, "/rest/v1/rota_roster?select=id,photo_path&id=eq." + encodeURIComponent(id) + "&limit=1", { method: "GET" });
+      const prior = await supabase(env, "/rest/v1/rota_roster?select=id,photo_path,rank,qra&id=eq." + encodeURIComponent(id) + "&limit=1", { method: "GET" });
       if (!Array.isArray(prior) || !prior.length) return json(404, { error: "Integrante não encontrado." });
       existing = prior[0];
     }
+    if (!RANKS.includes(rank)) return json(400, { error: "Escolha uma patente da lista." });
+    const rankChanged = existing ? existing.rank !== rank : rank !== "Recruta";
+    if (rankChanged && staff.role !== "admin") {
+      if (!staff.permissions.includes("patentes.promover")) return json(403, { error: existing ? "Mudar a patente exige o poder de promover e rebaixar." : "Cadastrar com patente exige o poder de promover e rebaixar." });
+      if (existing && !outranks(staff, rankLevel(existing.rank))) return json(403, { error: "Você só pode mudar a patente de quem está abaixo de você." });
+      if (rankLevel(rank) >= staff.level) return json(403, { error: "Você pode promover só até uma patente abaixo da sua." });
+    }
+    if (existing && staff.role !== "admin" && !outranks(staff, rankLevel(existing.rank))) return json(403, { error: "Você só pode editar a ficha de quem está abaixo de você." });
     const chosenPhoto = photoPath || (existing && existing.photo_path) || "";
     if (chosenPhoto && !validPhotoPath(chosenPhoto)) return json(400, { error: "A foto enviada não é válida." });
     const payload = { qra, full_name: fullName, rank, passport, admitted_on: admittedOn, birth_date: birthDate, status, photo_path: chosenPhoto, photo_url: chosenPhoto ? photoUrl(env, chosenPhoto) : "", updated_at: new Date().toISOString() };
     const endpoint = id ? "/rest/v1/rota_roster?id=eq." + encodeURIComponent(id) : "/rest/v1/rota_roster";
     const rows = await supabase(env, endpoint, { method: id ? "PATCH" : "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) });
     if (!Array.isArray(rows) || !rows.length) throw fail(500, "O efetivo não foi salvo.");
+    if (existing && existing.rank !== rank) {
+      const up = rankLevel(rank) > rankLevel(existing.rank), actorName = staff.role === "admin" ? "Administração" : (staff.name || "Integrante");
+      await supabase(env, "/rest/v1/rota_rank_history", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ roster_id: rows[0].id, qra, from_rank: existing.rank, to_rank: rank, actor: actorName, reason: clean(input.rankReason, 200) }) }).catch(() => {});
+      await supabase(env, "/rest/v1/rota_tag_log", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ action: up ? "promover" : "rebaixar", actor: actorName, target_name: qra, details: { from: existing.rank, to: rank } }) }).catch(() => {});
+    }
     return json(id ? 200 : 201, { row: toRow(rows[0]) });
   } catch (error) {
     const status = Number.isInteger(error.status) ? error.status : (/variáveis Supabase/.test(error.message || "") ? 503 : 500);
