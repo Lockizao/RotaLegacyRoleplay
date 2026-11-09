@@ -1133,3 +1133,17 @@ button.danger-fill:hover{background:#e3363e;border-color:#e3363e}
 @media (prefers-reduced-motion:reduce){.rc-ticket.is-changed,.rc-live.is-on::before{animation:none}}
 
 .rc-label{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+
+/* ================= senha e idade ================= */
+.check-line{display:flex;align-items:center;gap:10px;margin:2px 0 14px;color:var(--texto);font-size:15px;cursor:pointer}
+.check-line input{width:20px;height:20px;accent-color:var(--demarcacao);margin:0}
+.rc-age-note{grid-column:1/-1;margin:-4px 0 0}
+.rc-age-flag{color:var(--pendente);font-size:14px;font-weight:600}
+b.rc-age-flag{display:inline-block;margin-top:2px;font-size:13px}
+.rc-agecheck{display:flex !important;gap:10px;align-items:flex-start;border-color:var(--pendente) !important;cursor:pointer}
+.rc-agecheck input{width:20px;height:20px;margin-top:2px;accent-color:var(--demarcacao)}
+.rc-agecheck span{display:grid}
+.rc-agecheck b{color:var(--faixa)}
+.rc-agecheck small{color:var(--nevoa);font-size:13px}
+.rc-staff li{opacity:1}
+.rc-staff li:not(.is-on) .rc-staff-id b{color:var(--texto)}
