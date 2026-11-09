@@ -1269,3 +1269,14 @@ b.rc-age-flag{display:inline-block;margin-top:2px;font-size:13px}
 .team-drawer-body:focus-visible{outline:2px solid var(--demarcacao);outline-offset:-2px}
 
 body:has(#nav.open) .team-tab{display:none}
+
+/* ================= telas grandes: aproveitar a largura ================= */
+@media (min-width:1600px){
+  :root{--wrap:1440px}
+  .police-shell #app{max-width:1560px}
+}
+@media (min-width:2000px){
+  :root{--wrap:1640px}
+  .police-shell #app{max-width:1840px;margin:0 auto}
+  .penal-layout{grid-template-columns:minmax(0,1fr) 400px}
+}
