@@ -1,7 +1,7 @@
 // Sessões do portal: administrador (token HMAC próprio) e policial (sessão do Supabase Auth).
 import { decodeBase64Url, encodeBase64Url } from "./http.js";
 import { configuration, supabase } from "./supabase.js";
-import { ADMIN_LEVEL, ALL_PERMISSIONS, AREAS, rankLevel, validPermissions } from "./permissions.js";
+import { ADMIN_LEVEL, ALL_PERMISSIONS, AREAS, isMemberRole, rankLevel, validPermissions } from "./permissions.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -34,22 +34,38 @@ export async function requireAdmin(request, env, message) {
   throw Object.assign(new Error(message || "Somente o administrador pode fazer esta alteração."), { status: 401 });
 }
 
-// Aceita a sessão de administrador ou a de um policial habilitado e não suspenso.
-// O policial volta com patente (nível), tags e a soma das permissões das tags e dos poderes avulsos.
-export async function requireStaff(request, env) {
-  if (await verifyAdmin(request, env)) return { id: null, role: "admin", name: "Administração", rank: "", level: ADMIN_LEVEL, permissions: ALL_PERMISSIONS.slice(), tags: [], direct: [] };
+// Conta logada (qualquer categoria: visitante ou policial), habilitada e não suspensa.
+export async function requireAccount(request, env) {
   const authorization = String(request.headers.get("authorization") || ""), match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match) throw Object.assign(new Error("Entre com uma conta policial autorizada para acessar este recurso."), { status: 401 });
+  if (!match) throw Object.assign(new Error("Entre com uma conta autorizada para acessar este recurso."), { status: 401 });
   const cfg = configuration(env), token = match[1];
   const userResponse = await fetch(cfg.url + "/auth/v1/user", { headers: { apikey: cfg.publicKey, Authorization: "Bearer " + token } });
   const user = await userResponse.json().catch(() => ({}));
-  if (!userResponse.ok || !user.id) throw Object.assign(new Error("Sessão policial inválida ou expirada."), { status: 401 });
-  const members = await supabase(env, "/rest/v1/police_users?select=user_id,display_name,role,enabled,roster_id,suspended_until,suspension_reason&user_id=eq." + encodeURIComponent(user.id) + "&enabled=eq.true&limit=1", { method: "GET" });
+  if (!userResponse.ok || !user.id) throw Object.assign(new Error("Sessão inválida ou expirada."), { status: 401 });
+  const members = await supabase(env, "/rest/v1/police_users?select=user_id,display_name,normalized_name,role,enabled,roster_id,suspended_until,suspension_reason,last_seen_at&user_id=eq." + encodeURIComponent(user.id) + "&enabled=eq.true&limit=1", { method: "GET" });
   if (!Array.isArray(members) || !members.length) throw Object.assign(new Error("Esta conta não está autorizada para acessar este recurso."), { status: 403 });
   assertNotSuspended(members[0]);
-  const [tags, direct, rank] = await Promise.all([officerTags(env, user.id), directPermissions(env, user.id), rosterRank(env, members[0].roster_id)]);
+  return members[0];
+}
+
+// Aceita a sessão de administrador ou a de um integrante (policial com ficha do efetivo) habilitado e não suspenso.
+// O policial volta com patente (nível), tags e a soma das permissões das tags e dos poderes avulsos.
+export async function requireStaff(request, env) {
+  if (await verifyAdmin(request, env)) return { id: null, role: "admin", name: "Administração", rank: "", level: ADMIN_LEVEL, permissions: ALL_PERMISSIONS.slice(), tags: [], direct: [] };
+  const member = await requireAccount(request, env);
+  // Visitante (ou conta policial ainda sem ficha do efetivo) não entra na área policial.
+  if (!isMemberRole(member.role) || !member.roster_id) throw Object.assign(new Error("Conta de visitante: a área policial é só para integrantes da ROTA. Peça ingresso na recepção."), { status: 403, visitor: true });
+  await touchPresence(env, member);
+  const [tags, direct, rank] = await Promise.all([officerTags(env, member.user_id), directPermissions(env, member.user_id), rosterRank(env, member.roster_id)]);
   const permissions = [...new Set(tags.flatMap((tag) => tag.permissions).concat(direct))];
-  return { id: user.id, role: members[0].role || "policial", name: members[0].display_name || "", rosterId: members[0].roster_id || null, rank, level: rankLevel(rank), permissions, tags, direct };
+  return { id: member.user_id, role: member.role, name: member.display_name || "", rosterId: member.roster_id, rank, level: rankLevel(rank), permissions, tags, direct };
+}
+
+// Presença do policial (lista "No balcão" da recepção): grava no máximo a cada 30 s.
+async function touchPresence(env, member) {
+  const last = member.last_seen_at ? new Date(member.last_seen_at).getTime() : 0;
+  if (Date.now() - last < 30000) return;
+  await supabase(env, "/rest/v1/police_users?user_id=eq." + encodeURIComponent(member.user_id), { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ last_seen_at: new Date().toISOString() }) }).catch(() => {});
 }
 
 export function suspensionMessage(row) {
