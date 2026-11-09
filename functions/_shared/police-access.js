@@ -1,6 +1,7 @@
 import { clean, encodeBase64Url, fail, json, originError } from "./http.js";
 import { allowedAreas, areaRules, assertNotSuspended, outranks, requireAccount, requireAdmin, requireStaff, rosterRank, signAdmin } from "./auth.js";
 import { ALL_PERMISSIONS, AREAS, PERMISSIONS, RANKS, rankLevel, validPermissions } from "./permissions.js";
+import { identitiesByIds, identitiesFor } from "./identity.js";
 import { BLACKLIST_MESSAGE, activeBlacklist, assertNotLocked, cleanLoginId, editAccount, recordAttempt, removeMember, setOwnLoginId } from "./members.js";
 const MAX_BODY_BYTES = 16000;
 const SESSION_SECONDS = 8 * 60 * 60;
@@ -179,7 +180,7 @@ async function dashboard(env, actor) {
   const issues = [];
   const [requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster] = await Promise.all([
     dashboardRows(env, "solicitações de acesso", "access_requests?select=id,display_name,normalized_name,request_type,status,created_at&order=created_at.desc&limit=150", issues),
-    dashboardRows(env, "contas policiais", "police_users?select=user_id,display_name,normalized_name,role,enabled,created_at,roster_id,suspended_until,suspension_reason,suspended_by,login_id,removed_at,removed_by,removal_kind,removal_reason&order=display_name.asc&limit=300", issues),
+    dashboardRows(env, "contas policiais", "police_users?select=user_id,display_name,normalized_name,role,enabled,created_at,roster_id,suspended_until,suspension_reason,suspended_by,login_id,removed_at,removed_by,removal_kind,removal_reason,photo_url&order=display_name.asc&limit=1000", issues),
     dashboardRows(env, "histórico de acesso", "login_events?select=id,user_id,display_name,role,logged_at&order=logged_at.desc&limit=40", issues),
     dashboardRows(env, "B.O.", "bo_tickets?select=id,public_id,player,legacy_name,category,status,created_at&order=created_at.desc&limit=100", issues),
     dashboardRows(env, "Ouvidoria", "ouvidoria_tickets?select=id,public_id,player,legacy_name,category,status,created_at&order=created_at.desc&limit=100", issues),
@@ -210,7 +211,8 @@ async function dashboard(env, actor) {
     db(env, "rota_audit_log?select=id,action,result,target_login_id,target_name,reason,actor_login_id,actor_name,created_at&order=created_at.desc&limit=150", "GET").catch(() => []),
     db(env, "rota_blacklist?select=id,character_name,player_id,reason,created_by_name,created_by_login,created_at,photo_url&is_active=eq.true&order=created_at.desc&limit=500", "GET").catch(() => [])
   ]);
-  const result = { auditLog: auditLog || [], blacklistAdmin: blacklistAdmin || [], userPermissions: userPermissions || [], rules, rankHistory: rankHistory || [], areas: AREAS, ranks: RANKS, actorLevel: actor ? actor.level : 99, actorRank: actor ? actor.rank : "", requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues, tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), userTags: userTags || [], tagLog: tagLog || [], catalog: PERMISSIONS };
+  const identities = await identitiesFor(env, officers || []).catch(() => ({}));
+  const result = { identities, auditLog: auditLog || [], blacklistAdmin: blacklistAdmin || [], userPermissions: userPermissions || [], rules, rankHistory: rankHistory || [], areas: AREAS, ranks: RANKS, actorLevel: actor ? actor.level : 99, actorRank: actor ? actor.rank : "", requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues, tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), userTags: userTags || [], tagLog: tagLog || [], catalog: PERMISSIONS };
   // Quem entra por tag só recebe os dados das áreas que pode gerenciar.
   if (actor && actor.role !== "admin") {
     const can = (p) => actor.permissions.includes(p), people = can("acessos.gerenciar") || can("tags.gerenciar");
@@ -333,7 +335,7 @@ async function myProfile(env, actor) {
     const rows = await db(env, "rota_roster?select=id,qra,full_name,rank,passport,status,photo_url&id=eq." + encodeURIComponent(actor.rosterId) + "&limit=1", "GET").catch(() => []);
     if (Array.isArray(rows) && rows.length) roster = { id: rows[0].id, qra: rows[0].qra, fullName: rows[0].full_name, rank: rows[0].rank, passport: rows[0].passport, status: rows[0].status, photoUrl: rows[0].photo_url || "" };
   }
-  return { role: actor.role, mustSetPassword: actor.mustSetPassword, mustSetLoginId: !actor.loginId, loginId: actor.loginId, name: actor.name, permissions: actor.permissions, direct: actor.direct, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster, rank: actor.rank || "Recruta", level: actor.level, areas: allowedAreas(actor, rules) };
+  return { identity: (await identitiesByIds(env, [actor.id]))[actor.id] || null, role: actor.role, mustSetPassword: actor.mustSetPassword, mustSetLoginId: !actor.loginId, loginId: actor.loginId, name: actor.name, permissions: actor.permissions, direct: actor.direct, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster, rank: actor.rank || "Recruta", level: actor.level, areas: allowedAreas(actor, rules) };
 }
 
 async function tagsList(env) {
@@ -449,7 +451,7 @@ async function handleAdmin(request, env, input) {
   if (input.action === "my-profile") {
     if (!request.headers.get("x-rota-admin-session")) {
       const member = await requireAccount(request, env);
-      if (member.role !== "policial" || !member.roster_id) return { role: member.role === "policial" ? "visitante" : member.role, mustSetPassword: member.must_set_password !== false, mustSetLoginId: !member.login_id, loginId: member.login_id || "", name: member.display_name || "", permissions: [], tags: [], roster: null, rank: "", level: -1, areas: [] };
+      if (member.role !== "policial" || !member.roster_id) return { identity: (await identitiesByIds(env, [member.user_id]))[member.user_id] || null, role: member.role === "policial" ? "visitante" : member.role, mustSetPassword: member.must_set_password !== false, mustSetLoginId: !member.login_id, loginId: member.login_id || "", name: member.display_name || "", permissions: [], tags: [], roster: null, rank: "", level: -1, areas: [] };
     }
     return myProfile(env, await requireStaff(request, env));
   }

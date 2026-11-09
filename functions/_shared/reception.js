@@ -6,6 +6,7 @@ import { RANKS, rankLevel, validPermissions } from "./permissions.js";
 import { callSupabase, db, logTag, normalizeName, randomToken, syntheticEmail } from "./police-access.js";
 import { configuration } from "./supabase.js";
 import { BLACKLIST_MESSAGE, activeBlacklist } from "./members.js";
+import { identitiesFor } from "./identity.js";
 
 const MAX_BODY_BYTES = 8000;
 const ONLINE_MS = 45 * 1000;          // presença: visto há menos de 45 s
@@ -13,7 +14,7 @@ const EXPIRE_MS = 15 * 60 * 1000;     // quem sai da sala por 15 min perde a vez
 const CLAIM_MS = 10 * 60 * 1000;      // atendimento parado por 10 min volta para a fila
 const MAX_OPEN = 60;
 const OPEN = "status=in.(Pendente,Em%20atendimento)";
-const REQUEST_FIELDS = "id,age,age_checked_by,display_name,normalized_name,passport,purpose,note,status,created_at,last_seen_at,claimed_by,claimed_name,claimed_at,decided_by,decided_at,granted_role,granted_rank,refusal_reason,user_id,picked_up_at";
+const REQUEST_FIELDS = "id,photo_path,photo_url,age,age_checked_by,display_name,normalized_name,passport,purpose,note,status,created_at,last_seen_at,claimed_by,claimed_name,claimed_at,decided_by,decided_at,granted_role,granted_rank,refusal_reason,user_id,picked_up_at";
 const encoder = new TextEncoder();
 // Nome e sobrenome do personagem: duas palavras só com letras (acentos, apóstrofo e hífen permitidos).
 const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]+ [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]+$/;
@@ -68,14 +69,13 @@ async function responsibles(env) {
   (direct || []).forEach((d) => add(d.user_id, validPermissions([d.permission])));
   const ids = Object.keys(perms).filter((id) => perms[id].has("acessos.gerenciar"));
   if (!ids.length) return [];
-  const people = await db(env, "police_users?select=user_id,display_name,roster_id,last_seen_at,suspended_until&role=eq.policial&enabled=eq.true&roster_id=not.is.null&user_id=in.(" + ids.map(encodeURIComponent).join(",") + ")", "GET");
+  const people = await db(env, "police_users?select=user_id,display_name,role,roster_id,login_id,photo_url,last_seen_at,suspended_until&role=eq.policial&enabled=eq.true&roster_id=not.is.null&user_id=in.(" + ids.map(encodeURIComponent).join(",") + ")", "GET");
   const active = (people || []).filter((p) => !p.suspended_until || new Date(p.suspended_until) <= new Date());
   if (!active.length) return [];
-  const roster = await db(env, "rota_roster?select=id,qra,rank&id=in.(" + active.map((p) => p.roster_id).join(",") + ")", "GET").catch(() => []);
-  const byId = Object.fromEntries((roster || []).map((r) => [r.id, r]));
+  const who = await identitiesFor(env, active);
   return active.map((p) => {
-    const r = byId[p.roster_id] || {};
-    return { name: r.qra || p.display_name, rank: r.rank || "Recruta", online: online(p), canGrantRank: perms[p.user_id].has("patentes.promover") };
+    const id = who[p.user_id] || {};
+    return { label: id.label, name: id.name, loginId: id.loginId, photoUrl: id.photoUrl, nameColor: id.nameColor, rank: id.rank || "Recruta", online: online(p), canGrantRank: perms[p.user_id].has("patentes.promover") };
   }).sort((a, b) => (b.online - a.online) || (rankLevel(b.rank) - rankLevel(a.rank)));
 }
 
@@ -83,6 +83,7 @@ function publicRow(row, index, mine) {
   return { position: index + 1, name: row.display_name, waitingMinutes: minutes(row), online: online(row), status: row.status, attendedBy: row.claimed_name || "", mine: !!mine };
 }
 
+export async function requestByTicket(env, ticket) { return findByTicket(env, ticket); }
 async function findByTicket(env, ticket) {
   const value = clean(ticket, 80);
   if (value.length < 20) throw fail(401, "Bilhete da recepção inválido. Entre na fila de novo.");
@@ -189,7 +190,7 @@ async function staffQueue(env, actor) {
   const [queue, staff] = await Promise.all([openQueue(env), responsibles(env)]);
   const myName = staffName(actor);
   return {
-    queue: queue.map((row, i) => ({ id: row.id, position: i + 1, name: row.display_name, passport: row.passport, age: row.age, ageReview: row.age != null && row.age <= AGE_REVIEW, purpose: row.purpose, note: row.note, createdAt: row.created_at, waitingMinutes: minutes(row), online: online(row), status: row.status, attendedBy: row.claimed_name || "", attendedByMe: row.status === "Em atendimento" && (actor.id ? row.claimed_by === actor.id : row.claimed_name === myName), existingAccount: !!row.user_id })),
+    queue: queue.map((row, i) => ({ id: row.id, position: i + 1, name: row.display_name, photoUrl: row.photo_url || "", passport: row.passport, age: row.age, ageReview: row.age != null && row.age <= AGE_REVIEW, purpose: row.purpose, note: row.note, createdAt: row.created_at, waitingMinutes: minutes(row), online: online(row), status: row.status, attendedBy: row.claimed_name || "", attendedByMe: row.status === "Em atendimento" && (actor.id ? row.claimed_by === actor.id : row.claimed_name === myName), existingAccount: !!row.user_id })),
     staff,
     grantableRanks: grantableRanks(actor)
   };
@@ -229,7 +230,7 @@ async function release(env, actor, input) {
 async function createAccount(env, row, role, rosterId) {
   const created = await callSupabase(env, "/auth/v1/admin/users", { method: "POST", body: JSON.stringify({ email: syntheticEmail(row.normalized_name), password: randomToken() + randomToken(), email_confirm: true, user_metadata: { full_name: row.display_name, name: row.display_name, role }, app_metadata: { role } }) });
   try {
-    await db(env, "police_users", "POST", { user_id: created.id, display_name: row.display_name, normalized_name: row.normalized_name, login_email: syntheticEmail(row.normalized_name), role, enabled: true, roster_id: rosterId || null, login_id: /^\d{1,10}$/.test(row.passport || "") ? row.passport : null }, "return=minimal");
+    await db(env, "police_users", "POST", { user_id: created.id, display_name: row.display_name, normalized_name: row.normalized_name, login_email: syntheticEmail(row.normalized_name), role, enabled: true, roster_id: rosterId || null, login_id: /^\d{1,10}$/.test(row.passport || "") ? row.passport : null, photo_path: row.photo_path || "", photo_url: row.photo_url || "" }, "return=minimal");
   } catch (error) {
     await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(created.id), { method: "DELETE" }).catch(() => {});
     throw error;
@@ -301,6 +302,8 @@ async function decide(env, actor, input) {
     }
     await db(env, "rota_rank_history", "POST", { roster_id: rosterId, qra, from_rank: "", to_rank: rank, actor: actorName, reason: "Ingresso pela recepção" }, "return=minimal").catch(() => {});
   }
+  // Foto enviada no pedido vale para a conta que já existia, se ela ainda estiver com a logo.
+  if (row.user_id && row.photo_path) await db(env, "police_users?user_id=eq." + encodeURIComponent(row.user_id) + "&photo_path=eq.", "PATCH", { photo_path: row.photo_path, photo_url: row.photo_url }, "return=minimal").catch(() => {});
   // Conta que já existia (visitante pedindo ingresso) não precisa de token novo.
   const existed = !!row.user_id;
   await db(env, "access_requests?id=eq." + encodeURIComponent(row.id), "PATCH", { status: "Aprovado", decided_by: actorName, decided_at: now, granted_role: role, granted_rank: rank, user_id: userId, age_checked_by: row.age != null && row.age <= AGE_REVIEW ? actorName : "", picked_up_at: existed ? now : null }, "return=minimal");
