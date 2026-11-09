@@ -1152,3 +1152,35 @@ b.rc-age-flag{display:inline-block;margin-top:2px;font-size:13px}
 .update-bar b{color:var(--faixa)}
 .update-bar button{min-height:40px}
 @media (max-width:600px){.update-bar{left:16px;right:16px;bottom:16px;transform:none;max-width:none}}
+
+/* ================= ID, remoção, Blacklist e auditoria ================= */
+.officer-id{font-variant-numeric:tabular-nums}
+.officer-id.is-missing{color:var(--pendente);border-color:rgba(240,145,58,.5)}
+.access-legacy{justify-self:center;margin-top:10px;font-size:14px;color:var(--nevoa)}
+.access-legacy-note{margin:-6px 0 12px}
+.crit-steps{list-style:none;display:flex;gap:8px;margin:0;padding:0;counter-reset:passo}
+.crit-steps li{flex:1;padding:8px 10px;border:1px solid var(--friso);border-radius:var(--r-s);font-size:13px;color:var(--nevoa);counter-increment:passo}
+.crit-steps li::before{content:counter(passo) ". ";font-weight:700}
+.crit-steps li.is-on{border-color:var(--demarcacao);color:var(--faixa);background:var(--lataria)}
+.crit-steps li.is-done{color:var(--radio)}
+.crit-step[hidden],.crit-bl[hidden],.formactions [hidden]{display:none !important}
+.crit-alert{display:grid;gap:4px;padding:12px 14px;border:1px solid var(--friso-forte);border-left:4px solid var(--demarcacao);border-radius:var(--r-s);background:var(--asfalto)}
+.crit-alert.is-red{border-left-color:var(--sirene);border-color:rgba(211,38,46,.55)}
+.crit-alert b{color:var(--faixa)}
+.crit-alert span{color:var(--texto);font-size:14px}
+.crit-summary{display:grid;gap:12px}
+.crit-bl-check{border-color:rgba(211,38,46,.45)}
+.bl-admin-note{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.bl-admin-note span{flex:1 1 260px}
+.bl-admin-bar{display:flex;gap:12px;align-items:end;justify-content:space-between;flex-wrap:wrap;padding:16px}
+.bl-admin-search{display:grid;gap:6px;flex:1 1 240px;max-width:360px;font-weight:600;color:var(--faixa)}
+.bl-admin-table td small,.audit-table td small{display:block;color:var(--nevoa);font-size:12px}
+.bl-id{font-variant-numeric:tabular-nums;color:var(--faixa);font-weight:600}
+.bl-reason{max-width:320px;overflow-wrap:anywhere}
+.bl-admin-table button{min-height:36px;padding:6px 12px;font-size:14px}
+.audit-intro{padding:16px 16px 4px}
+.audit-table td,.bl-admin-table td,.bl-admin-table th{vertical-align:top}
+@media (max-width:600px){.crit-steps{flex-direction:column}.bl-admin-bar{align-items:stretch}.bl-admin-search{max-width:none}}
+.access-login form .check-line{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;text-align:left;font-weight:500;margin:4px 0 16px}
+.access-login form .check-line input{width:20px;height:20px;min-height:0;flex:0 0 auto;margin:0;padding:0}
+.access-login form .access-legacy{display:block;margin:12px auto 0}

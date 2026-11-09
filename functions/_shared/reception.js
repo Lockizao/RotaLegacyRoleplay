@@ -5,6 +5,7 @@ import { requireAccount, requireStaff } from "./auth.js";
 import { RANKS, rankLevel, validPermissions } from "./permissions.js";
 import { callSupabase, db, logTag, normalizeName, randomToken, syntheticEmail } from "./police-access.js";
 import { configuration } from "./supabase.js";
+import { BLACKLIST_MESSAGE, activeBlacklist } from "./members.js";
 
 const MAX_BODY_BYTES = 8000;
 const ONLINE_MS = 45 * 1000;          // presença: visto há menos de 45 s
@@ -106,6 +107,9 @@ async function join(request, env, input) {
   const age = Number(input.age);
   if (!Number.isInteger(age) || age < 1 || age > 99) throw fail(400, "Informe a sua idade real.");
   if (age < 15) throw fail(403, "A idade mínima para ter conta no portal é 15 anos.");
+  if (await activeBlacklist(env, passport)) throw fail(403, BLACKLIST_MESSAGE);
+  const owner = await db(env, "police_users?select=user_id&login_id=eq." + encodeURIComponent(passport) + "&removed_at=is.null&limit=1", "GET");
+  if (owner.length && (!account || owner[0].user_id !== account.user_id)) throw fail(409, "Este ID já tem conta ativa no portal. Entre com o seu ID e a sua senha, ou peça a troca de token.");
   if (!account) {
     const existing = await db(env, "police_users?select=user_id&normalized_name=eq." + encodeURIComponent(normalized) + "&limit=1", "GET");
     if (existing.length) throw fail(409, "Já existe uma conta com este nome. Entre com o seu token ou peça a troca de token.");
@@ -167,10 +171,10 @@ async function pickup(env, input) {
   const token = randomToken();
   await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(me.user_id), { method: "PUT", body: JSON.stringify({ password: token }) });
   const session = await callSupabase(env, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: syntheticEmail(me.normalized_name), password: token }) }, true);
-  const account = await db(env, "police_users?select=display_name,role&user_id=eq." + encodeURIComponent(me.user_id) + "&limit=1", "GET");
+  const account = await db(env, "police_users?select=display_name,role,login_id&user_id=eq." + encodeURIComponent(me.user_id) + "&limit=1", "GET");
   session.user.user_metadata = { ...(session.user.user_metadata || {}), full_name: account[0].display_name, role: account[0].role };
   await db(env, "login_events", "POST", { user_id: me.user_id, display_name: account[0].display_name, role: account[0].role, logged_at: new Date().toISOString() }, "return=minimal").catch(() => {});
-  return { token, name: account[0].display_name, role: account[0].role, session };
+  return { token, name: account[0].display_name, role: account[0].role, loginId: account[0].login_id || "", session };
 }
 
 // ---------- atendimento ----------
@@ -225,7 +229,7 @@ async function release(env, actor, input) {
 async function createAccount(env, row, role, rosterId) {
   const created = await callSupabase(env, "/auth/v1/admin/users", { method: "POST", body: JSON.stringify({ email: syntheticEmail(row.normalized_name), password: randomToken() + randomToken(), email_confirm: true, user_metadata: { full_name: row.display_name, name: row.display_name, role }, app_metadata: { role } }) });
   try {
-    await db(env, "police_users", "POST", { user_id: created.id, display_name: row.display_name, normalized_name: row.normalized_name, login_email: syntheticEmail(row.normalized_name), role, enabled: true, roster_id: rosterId || null }, "return=minimal");
+    await db(env, "police_users", "POST", { user_id: created.id, display_name: row.display_name, normalized_name: row.normalized_name, login_email: syntheticEmail(row.normalized_name), role, enabled: true, roster_id: rosterId || null, login_id: /^\d{1,10}$/.test(row.passport || "") ? row.passport : null }, "return=minimal");
   } catch (error) {
     await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(created.id), { method: "DELETE" }).catch(() => {});
     throw error;
@@ -247,6 +251,7 @@ async function decide(env, actor, input) {
     return { ok: true };
   }
   if (input.decision !== "aprovar") throw fail(400, "Decisão inválida.");
+  if (await activeBlacklist(env, row.passport)) throw fail(403, "Este ID está na Blacklist da ROTA: não pode ser aprovado.");
   if (row.age != null && row.age <= AGE_REVIEW && input.ageChecked !== true) throw fail(400, "Este solicitante tem " + row.age + " anos: confirme que verificou a idade antes de aprovar.");
   const role = input.role === "policial" ? "policial" : "visitante";
   if (!row.user_id) {
@@ -254,7 +259,7 @@ async function decide(env, actor, input) {
     if (taken.length) throw fail(409, "Já existe uma conta com este nome. Recuse e oriente a pessoa a pedir troca de token.");
   }
 
-  let userId = row.user_id, rosterId = null, rank = null;
+  let userId = row.user_id, rosterId = null, rank = null, reusedRoster = false;
   if (role === "visitante") {
     if (!userId) userId = await createAccount(env, row, "visitante", null);
   } else {
@@ -267,17 +272,31 @@ async function decide(env, actor, input) {
     if (fullName.length < 3) throw fail(400, "Informe o nome completo do personagem.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) throw fail(400, "Informe a data de nascimento do personagem.");
     try {
-      const fichas = await db(env, "rota_roster", "POST", { qra, full_name: fullName, rank, passport: row.passport || clean(input.passport, 20), admitted_on: now.slice(0, 10), birth_date: birthDate, status: "Ativo", photo_path: "", photo_url: "" }, "return=representation");
-      rosterId = fichas[0].id;
+      const passport = row.passport || clean(input.passport, 20);
+      // Quem foi removido e volta reaproveita a ficha antiga (Inativa) com o mesmo passaporte; o histórico continua.
+      const old = await db(env, "rota_roster?select=id,status&passport=eq." + encodeURIComponent(passport) + "&limit=1", "GET");
+      if (old.length && old[0].status !== "Inativo") throw fail(409, "Já existe uma ficha ativa no efetivo com este passaporte.");
+      if (old.length) {
+        await db(env, "police_users?roster_id=eq." + encodeURIComponent(old[0].id), "PATCH", { roster_id: null }, "return=minimal");
+        const fichas = await db(env, "rota_roster?id=eq." + encodeURIComponent(old[0].id), "PATCH", { qra, full_name: fullName, rank, admitted_on: now.slice(0, 10), birth_date: birthDate, status: "Ativo", updated_at: now }, "return=representation");
+        rosterId = fichas[0].id;
+        reusedRoster = true;
+      } else {
+        const fichas = await db(env, "rota_roster", "POST", { qra, full_name: fullName, rank, passport, admitted_on: now.slice(0, 10), birth_date: birthDate, status: "Ativo", photo_path: "", photo_url: "" }, "return=representation");
+        rosterId = fichas[0].id;
+      }
     } catch (error) {
+      if (/ficha ativa/.test(error.message)) throw error;
+      if (/ficha ativa/.test(error.message)) throw error;
       if (error.status === 409 || /duplicate|unique/i.test(error.message)) throw fail(409, "Já existe uma ficha no efetivo com este QRA ou passaporte.");
       throw error;
     }
     try {
       if (userId) await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { role: "policial", roster_id: rosterId }, "return=minimal");
+      if (userId && /^\d{1,10}$/.test(row.passport || "")) await db(env, "police_users?user_id=eq." + encodeURIComponent(userId) + "&login_id=is.null", "PATCH", { login_id: row.passport }, "return=minimal").catch(() => {});
       else userId = await createAccount(env, row, "policial", rosterId);
     } catch (error) {
-      await db(env, "rota_roster?id=eq." + encodeURIComponent(rosterId), "DELETE", undefined, "return=minimal").catch(() => {});
+      await db(env, "rota_roster?id=eq." + encodeURIComponent(rosterId), reusedRoster ? "PATCH" : "DELETE", reusedRoster ? { status: "Inativo" } : undefined, "return=minimal").catch(() => {});
       throw error;
     }
     await db(env, "rota_rank_history", "POST", { roster_id: rosterId, qra, from_rank: "", to_rank: rank, actor: actorName, reason: "Ingresso pela recepção" }, "return=minimal").catch(() => {});

@@ -12,7 +12,7 @@
   var profile = null;
 
   // "Manter conectado": a sessão fica no localStorage e vale até 30 dias sem uso; sem a opção, só nesta aba.
-  var passwordPending = false;
+  var passwordPending = false, loginIdPending = false;
   function remembering() { try { return localStorage.getItem(REMEMBER_KEY) === "1"; } catch (_) { return false; } }
   function touchLastUse() { try { if (remembering()) localStorage.setItem(LAST_USE_KEY, String(Date.now())); } catch (_) {} }
   function readSession() {
@@ -219,10 +219,10 @@
       return ok;
     } catch (_) { saveSession(null); return false; }
   }
-  async function signIn(name, token, remember) {
+  async function signIn(loginId, token, remember, legacyName) {
     try { if (remember) localStorage.setItem(REMEMBER_KEY, "1"); else localStorage.removeItem(REMEMBER_KEY); } catch (_) {}
     if (!isConfigured()) throw new Error("Configure a URL e a chave publishable em js/supabase-config.js e publique as funções do portal.");
-    var body = await functionCall("officer-login", { name: String(name || "").trim(), token: String(token || "") });
+    var body = await functionCall("officer-login", legacyName ? { name: String(legacyName).trim(), token: String(token || "") } : { loginId: String(loginId || "").trim(), token: String(token || "") });
     var session = body.session;
     if (!session || !session.access_token || !(await policeMembership(session))) throw new Error("A conta não está ativa. Peça aprovação à administração da ROTA.");
     session.expires_at = Date.now() + (Number(session.expires_in) || 3600) * 1000;
@@ -230,12 +230,22 @@
     sessionStorage.removeItem(ADMIN_KEY);
     saveSession(session);
     passwordPending = !!body.mustSetPassword;
+    loginIdPending = !!body.mustSetLoginId;
     await loadProfile();
     return session;
   }
   function needsPassword() {
     return !!(current && current.access_token && current.access_token !== "admin" && (passwordPending || (profile && profile.mustSetPassword)));
   }
+  function needsLoginId() {
+    return !!(current && current.access_token && current.access_token !== "admin" && (loginIdPending || (profile && profile.mustSetLoginId)));
+  }
+  async function setLoginId(loginId) {
+    await functionCall("set-login-id", { loginId: String(loginId || "").trim() }, true);
+    loginIdPending = false;
+    if (profile) { profile.mustSetLoginId = false; profile.loginId = String(loginId).trim(); }
+  }
+  function myLoginId() { return profile && profile.loginId ? profile.loginId : ""; }
   async function setPassword(password) {
     var result = await functionCall("set-password", { password: String(password || "") }, true);
     if (result && result.session && result.session.access_token) {
@@ -395,7 +405,7 @@
   }
   async function listBlacklist() { var result = await protectedRequest("/api/blacklist", "GET"); return result.rows || []; }
   async function addBlacklist(details) { return protectedRequest("/api/blacklist", "POST", details); }
-  async function removeBlacklist(id) { return protectedRequest("/api/blacklist", "DELETE", { id: id }); }
+  async function removeBlacklist(details) { return protectedRequest("/api/blacklist", "DELETE", typeof details === "string" ? { id: details } : details); }
   async function listArrests() { var result = await protectedRequest("/api/arrests", "GET"); return result.rows || []; }
   async function createArrest(record) { return protectedRequest("/api/arrests", "POST", record); }
   async function notifyArrest(record) { return protectedRequest("/api/arrest-notify", "POST", record); }
@@ -449,6 +459,9 @@
     canArea: canArea,
     isVisitor: isVisitor,
     needsPassword: needsPassword,
+    needsLoginId: needsLoginId,
+    setLoginId: setLoginId,
+    myLoginId: myLoginId,
     setPassword: setPassword,
     receptionCall: receptionCall,
     adoptSession: adoptSession,
