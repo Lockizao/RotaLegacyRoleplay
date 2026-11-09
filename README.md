@@ -41,6 +41,8 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
 
    Para **senha própria, manter conectado e idade na recepção**, execute `supabase/senhas.sql` depois do `recepcao.sql`. No primeiro login com o token, cada conta cria a própria senha (o token vira só recuperação). Troca de token, suspensão e desativação derrubam as sessões salvas na hora.
 
+   Para **login por ID, remoção de integrantes e Blacklist que bloqueia acesso**, execute `supabase/integrantes.sql` depois do `senhas.sql`. O login passa a ser pelo ID no servidor (passaporte) e senha; contas antigas sem ID entram uma última vez pelo nome e registram o ID. Remover integrante, incluir e retirar da Blacklist exigem o ID e a senha de quem faz, motivo e confirmação final, e tudo fica na auditoria permanente (`rota_audit_log`, que não aceita alteração nem exclusão).
+
    Para **Comunicados** e **Editais**, execute `supabase/public-content.sql`. A administração publica e remove os dois pelo **Painel policial** (botões "Publicar comunicado" e "Publicar edital"), sem precisar editar o código. As inscrições só são aceitas para editais publicados e dentro do período de inscrição.
 
    Ao atualizar o portal, execute de novo o `supabase/schema.sql`: ele pode ser reexecutado com segurança e aplica as proteções novas (decisão única de tickets, limite de pedidos e bloqueio de tentativas de login administrativo).

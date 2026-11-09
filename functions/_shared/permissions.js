@@ -6,6 +6,7 @@ export const PERMISSIONS = {
   "comunicados.publicar": "Publicar e remover comunicados",
   "editais.gerenciar": "Publicar editais e ver as candidaturas",
   "blacklist.gerenciar": "Incluir e remover personagens da blacklist",
+  "integrantes.remover": "Remover integrantes (desligamento e exoneração)",
   "integrantes.suspender": "Suspender integrantes com prazo e motivo, e cancelar suspensões",
   "patentes.promover": "Promover e rebaixar integrantes",
   "regras.ajustar": "Mudar a patente mínima de cada área do site",
