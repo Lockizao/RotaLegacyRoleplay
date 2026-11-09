@@ -79,6 +79,60 @@
   function canArea(area) {
     return isAdmin() || !!(profile && Array.isArray(profile.areas) && profile.areas.indexOf(area) !== -1);
   }
+  // Conta de visitante (ou outra categoria que não seja integrante): vê só o portal público.
+  function isVisitor() {
+    if (isAdmin() || !current || !current.access_token) return false;
+    var role = profile && profile.role ? profile.role : (current.user && current.user.user_metadata && current.user.user_metadata.role);
+    return !!role && role !== "policial";
+  }
+  async function receptionCall(action, values, auth) {
+    var headers = { "Content-Type": "application/json" };
+    if (auth && isAdmin() && adminToken) headers["x-rota-admin-session"] = adminToken;
+    else if (auth && officerToken()) headers.Authorization = "Bearer " + officerToken();
+    var response = await fetch("/api/reception", { method: "POST", headers: headers, body: JSON.stringify(Object.assign({ action: action }, values || {})) });
+    return responseData(response);
+  }
+  // Sessão entregue pela recepção na retirada do acesso aprovado.
+  async function adoptSession(session) {
+    if (!session || !session.access_token || !(await policeMembership(session))) throw new Error("Não foi possível entrar com o acesso aprovado.");
+    session.expires_at = Date.now() + (Number(session.expires_in) || 3600) * 1000;
+    adminToken = "";
+    sessionStorage.removeItem(ADMIN_KEY);
+    saveSession(session);
+    await loadProfile();
+    return session;
+  }
+  // Tempo real da recepção: o servidor avisa no canal público "rota-recepcao" e cada tela busca o estado de novo.
+  var realtime = { client: null, channel: null, listeners: [], live: false, loading: null };
+  function loadRealtimeLib() {
+    if (window.supabase && window.supabase.createClient) return Promise.resolve(window.supabase);
+    if (realtime.loading) return realtime.loading;
+    realtime.loading = new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.onload = function () { if (window.supabase && window.supabase.createClient) resolve(window.supabase); else reject(new Error("tempo real indisponível")); };
+      script.onerror = function () { realtime.loading = null; reject(new Error("tempo real indisponível")); };
+      document.head.appendChild(script);
+    });
+    return realtime.loading;
+  }
+  function emitReception(kind) { realtime.listeners.slice().forEach(function (fn) { try { fn(kind); } catch (_) {} }); }
+  function onReception(listener) {
+    realtime.listeners.push(listener);
+    if (!realtime.channel && isConfigured()) {
+      loadRealtimeLib().then(function (lib) {
+        if (realtime.channel) return;
+        realtime.client = realtime.client || lib.createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+        realtime.channel = realtime.client.channel("rota-recepcao")
+          .on("broadcast", { event: "fila" }, function () { emitReception("fila"); })
+          .subscribe(function (status) { realtime.live = status === "SUBSCRIBED"; emitReception("status"); });
+      }).catch(function () { realtime.live = false; emitReception("status"); });
+    }
+    return function () { realtime.listeners = realtime.listeners.filter(function (fn) { return fn !== listener; }); };
+  }
+  function receptionLive() { return realtime.live; }
   function canManage() {
     return isAdmin() || !!(profile && Array.isArray(profile.permissions) && profile.permissions.length);
   }
@@ -356,6 +410,11 @@
     can: can,
     canManage: canManage,
     canArea: canArea,
+    isVisitor: isVisitor,
+    receptionCall: receptionCall,
+    adoptSession: adoptSession,
+    onReception: onReception,
+    receptionLive: receptionLive,
     profile: function () { return profile; },
     loadProfile: loadProfile,
     restore: validSession,

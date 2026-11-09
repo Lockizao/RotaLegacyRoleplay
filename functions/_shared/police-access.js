@@ -1,21 +1,21 @@
 import { clean, encodeBase64Url, fail, json, originError } from "./http.js";
-import { allowedAreas, areaRules, assertNotSuspended, outranks, requireAdmin, requireStaff, rosterRank, signAdmin } from "./auth.js";
+import { allowedAreas, areaRules, assertNotSuspended, outranks, requireAccount, requireAdmin, requireStaff, rosterRank, signAdmin } from "./auth.js";
 import { ALL_PERMISSIONS, AREAS, PERMISSIONS, RANKS, rankLevel, validPermissions } from "./permissions.js";
 const MAX_BODY_BYTES = 16000;
 const SESSION_SECONDS = 8 * 60 * 60;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function normalizeName(value) {
+export function normalizeName(value) {
   return clean(value, 80).normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-function syntheticEmail(normalized) {
+export function syntheticEmail(normalized) {
   return "rota." + normalized + "@members.invalid";
 }
 
-function randomToken() {
+export function randomToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return encodeBase64Url(bytes);
@@ -31,7 +31,7 @@ function config(env) {
   return { url, serviceKey, publicKey };
 }
 
-async function callSupabase(env, path, options, usePublicKey) {
+export async function callSupabase(env, path, options, usePublicKey) {
   const cfg = config(env);
   const key = usePublicKey ? cfg.publicKey : cfg.serviceKey;
   const init = options || {};
@@ -48,7 +48,7 @@ async function callSupabase(env, path, options, usePublicKey) {
   return body;
 }
 
-async function db(env, path, method, body, prefer) {
+export async function db(env, path, method, body, prefer) {
   const headers = {};
   if (prefer) headers.Prefer = prefer;
   return callSupabase(env, "/rest/v1/" + path, {
@@ -97,9 +97,10 @@ async function officerLogin(env, input) {
   if (!Array.isArray(members) || !members.length) throw fail(403, "Esta conta não está autorizada. Peça aprovação à administração.");
   assertNotSuspended(members[0]);
   await db(env, "login_events", "POST", { user_id: session.user.id, display_name: members[0].display_name, role: members[0].role || "policial", logged_at: new Date().toISOString() }, "return=minimal");
+  await db(env, "police_users?user_id=eq." + encodeURIComponent(session.user.id), "PATCH", { last_seen_at: new Date().toISOString() }, "return=minimal").catch(() => {});
   session.user.user_metadata = session.user.user_metadata || {};
   session.user.user_metadata.full_name = members[0].display_name;
-  session.user.user_metadata.role = members[0].role || "policial";
+  session.user.user_metadata.role = members[0].role || "visitante";
   return { session };
 }
 
@@ -272,7 +273,7 @@ async function rankRulesSave(env, actor, actorName, input) {
   return { ok: true };
 }
 
-async function logTag(env, entry) {
+export async function logTag(env, entry) {
   await db(env, "rota_tag_log", "POST", entry, "return=minimal").catch(() => {});
 }
 
@@ -356,7 +357,7 @@ async function officerLink(env, actor, actorName, input) {
   await assertOutranks(env, actor, userId);
   if (rosterId && !outranks(actor, rankLevel(await rosterRank(env, rosterId)))) throw fail(403, "Você só pode vincular fichas de patente menor que a sua.");
   try {
-    const rows = await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { roster_id: rosterId || null }, "return=representation");
+    const rows = await db(env, "police_users?user_id=eq." + encodeURIComponent(userId) + "&role=in.(policial,visitante)", "PATCH", { roster_id: rosterId || null, role: rosterId ? "policial" : "visitante" }, "return=representation");
     if (!rows.length) throw fail(404, "Conta não encontrada.");
     await logTag(env, { action: "vincular", actor: actorName, target_user: userId, target_name: rows[0].display_name, details: { rosterId: rosterId || null } });
     return { officer: rows[0] };
@@ -387,7 +388,13 @@ const MANAGE_ACTIONS = ["admin-dashboard", "tags-list"];
 
 async function handleAdmin(request, env, input) {
   if (input.action === "admin-session") { await requireAdmin(request, env, "Sessão administrativa inválida ou expirada."); return { valid: true }; }
-  if (input.action === "my-profile") return myProfile(env, await requireStaff(request, env));
+  if (input.action === "my-profile") {
+    if (!request.headers.get("x-rota-admin-session")) {
+      const member = await requireAccount(request, env);
+      if (member.role !== "policial" || !member.roster_id) return { role: member.role === "policial" ? "visitante" : member.role, name: member.display_name || "", permissions: [], tags: [], roster: null, rank: "", level: -1, areas: [] };
+    }
+    return myProfile(env, await requireStaff(request, env));
+  }
   const actor = await requireStaff(request, env).catch((error) => { if (error.status === 401 && !request.headers.get("authorization")) throw fail(401, "Sessão administrativa inválida ou expirada."); throw error; });
   const isServerAdmin = actor.role === "admin", needed = ACTION_PERMISSION[input.action];
   if (!isServerAdmin) {
@@ -435,8 +442,8 @@ async function handleAdmin(request, env, input) {
       const token = randomToken();
       let created;
       try {
-        created = await callSupabase(env, "/auth/v1/admin/users", { method: "POST", body: JSON.stringify({ email: syntheticEmail(requestRow.normalized_name), password: token, email_confirm: true, user_metadata: { full_name: requestRow.display_name, name: requestRow.display_name, role: "policial" }, app_metadata: { role: "policial" } }) });
-        await db(env, "police_users", "POST", { user_id: created.id, display_name: requestRow.display_name, normalized_name: requestRow.normalized_name, login_email: syntheticEmail(requestRow.normalized_name), role: "policial", enabled: true }, "return=minimal");
+        created = await callSupabase(env, "/auth/v1/admin/users", { method: "POST", body: JSON.stringify({ email: syntheticEmail(requestRow.normalized_name), password: token, email_confirm: true, user_metadata: { full_name: requestRow.display_name, name: requestRow.display_name, role: "visitante" }, app_metadata: { role: "visitante" } }) });
+        await db(env, "police_users", "POST", { user_id: created.id, display_name: requestRow.display_name, normalized_name: requestRow.normalized_name, login_email: syntheticEmail(requestRow.normalized_name), role: "visitante", enabled: true }, "return=minimal");
         await db(env, "access_requests?id=eq." + encodeURIComponent(id), "PATCH", { status: "Aprovado", decided_at: new Date().toISOString() }, "return=minimal");
       } catch (error) {
         if (created && created.id) {

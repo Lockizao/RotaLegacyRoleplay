@@ -46,3 +46,15 @@ export function rankLevel(rank) {
   const index = RANKS.indexOf(String(rank || "").trim());
   return index < 0 ? 0 : index;
 }
+
+// Categorias de conta (police_users.role). Só "policial" com ficha do efetivo entra na área policial.
+// Advogado e imprensa estão previstos: ainda não têm telas nem acessos.
+export const ROLES = {
+  visitante: { label: "Visitante", description: "Cidadão com conta: vê só o portal público." },
+  policial: { label: "Integrante da ROTA", description: "Acesso pela patente da ficha do efetivo." },
+  advogado: { label: "Advogado", description: "Previsto: consultas sobre os próprios clientes.", planned: true },
+  imprensa: { label: "Imprensa", description: "Previsto: informações públicas para reportagens.", planned: true }
+};
+export function isMemberRole(role) {
+  return role === "policial";
+}
