@@ -1147,3 +1147,8 @@ b.rc-age-flag{display:inline-block;margin-top:2px;font-size:13px}
 .rc-agecheck small{color:var(--nevoa);font-size:13px}
 .rc-staff li{opacity:1}
 .rc-staff li:not(.is-on) .rc-staff-id b{color:var(--texto)}
+/* aviso de versão nova */
+.update-bar{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:1000;display:flex;gap:14px;align-items:center;flex-wrap:wrap;max-width:calc(100vw - 32px);padding:12px 14px 12px 18px;border:1px solid var(--demarcacao);border-radius:var(--r-m);box-shadow:0 12px 32px rgba(0,0,0,.6);color:var(--texto);background-color:var(--lataria);background-image:var(--pos)}
+.update-bar b{color:var(--faixa)}
+.update-bar button{min-height:40px}
+@media (max-width:600px){.update-bar{left:16px;right:16px;bottom:16px;transform:none;max-width:none}}
