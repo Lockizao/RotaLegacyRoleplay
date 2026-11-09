@@ -1,5 +1,5 @@
 import { clean, json, originError } from "./http.js";
-import { requireAdmin } from "./auth.js";
+import { requirePermission } from "./auth.js";
 import { supabase } from "./supabase.js";
 const encoder = new TextEncoder();
 const MAX_BODY_BYTES = 8000;
@@ -43,12 +43,12 @@ export async function handleContent(request, env) {
       return json(200, { rows: (Array.isArray(rows) ? rows : []).map(toEdital) });
     }
 
-    await requireAdmin(request, env);
     const text = await request.text();
     if (encoder.encode(text).byteLength > MAX_BODY_BYTES) return json(413, { error: "Solicitação muito grande." });
     let input;
     try { input = JSON.parse(text || "{}"); } catch (_) { return json(400, { error: "Dados inválidos." }); }
     if (!input || typeof input !== "object" || Array.isArray(input) || !TYPES.includes(input.type)) return json(400, { error: "Dados inválidos." });
+    await requirePermission(request, env, input.type === "announcements" ? "comunicados.publicar" : "editais.gerenciar");
     const table = input.type === "announcements" ? "rota_announcements" : "rota_editais";
 
     if (request.method === "POST") {

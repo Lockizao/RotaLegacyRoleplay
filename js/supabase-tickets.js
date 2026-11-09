@@ -8,6 +8,7 @@
   var ADMIN_KEY = "rota-admin-session";
   var current = readSession();
   var adminToken = sessionStorage.getItem(ADMIN_KEY) || "";
+  var profile = null;
 
   function readSession() {
     try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); }
@@ -24,7 +25,7 @@
     if (officerToken && isConfigured()) {
       fetch(url + "/auth/v1/logout?scope=local", { method: "POST", headers: apiHeaders(officerToken), keepalive: true }).catch(function () {});
     }
-    saveSession(null); adminToken = ""; sessionStorage.removeItem(ADMIN_KEY);
+    saveSession(null); adminToken = ""; profile = null; sessionStorage.removeItem(ADMIN_KEY);
   }
   function isConfigured() {
     return /^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) && !!key && !/COLE_AQUI|SUA_CHAVE/i.test(key);
@@ -52,10 +53,31 @@
   async function functionCall(action, values, admin) {
     var headers = { "Content-Type": "application/json" };
     if (admin && adminToken) headers["x-rota-admin-session"] = adminToken;
+    else if (admin && officerToken()) headers.Authorization = "Bearer " + officerToken();
     var response = await fetch("/api/police-access", {
       method: "POST", headers: headers, body: JSON.stringify(Object.assign({ action: action }, values || {}))
     });
     return responseData(response);
+  }
+  function officerToken() {
+    return current && current.access_token && current.access_token !== "admin" ? current.access_token : "";
+  }
+  // Perfil do policial: tags, permissões e ficha do efetivo. Sem perfil, nenhuma permissão extra.
+  async function loadProfile() {
+    if (!officerToken()) { profile = null; return null; }
+    try { profile = await functionCall("my-profile", {}, true); }
+    catch (_) { profile = { permissions: [], tags: [], roster: null }; }
+    return profile;
+  }
+  function can(permission) {
+    return isAdmin() || !!(profile && Array.isArray(profile.permissions) && profile.permissions.indexOf(permission) !== -1);
+  }
+  function canManage() {
+    return isAdmin() || !!(profile && Array.isArray(profile.permissions) && profile.permissions.length);
+  }
+  function authHeaders() {
+    if (isAdmin() && adminToken) return { "x-rota-admin-session": adminToken };
+    return officerToken() ? { Authorization: "Bearer " + officerToken() } : {};
   }
   function normalizedName(value) {
     return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -109,6 +131,7 @@
       if (current.expires_at && current.expires_at < Date.now() + 60000) await refreshSession();
       var ok = await policeMembership(current);
       if (!ok) saveSession(null);
+      else await loadProfile();
       return ok;
     } catch (_) { return false; }
   }
@@ -121,6 +144,7 @@
     adminToken = "";
     sessionStorage.removeItem(ADMIN_KEY);
     saveSession(session);
+    await loadProfile();
     return session;
   }
   async function adminLogin(username, password) {
@@ -135,7 +159,7 @@
   async function requestAccess(name) { return functionCall("request-access", { name: String(name || "").trim() }); }
   async function requestTokenReset(name) { return functionCall("request-reset", { name: String(name || "").trim() }); }
   async function adminAction(action, values) {
-    if (!adminToken) throw new Error("Sua sessão administrativa expirou. Entre novamente.");
+    if (!adminToken && !officerToken()) throw new Error("Sua sessão expirou. Entre novamente.");
     return functionCall(action, values, true);
   }
   async function applicationCall(action, values) {
@@ -262,10 +286,10 @@
     return new File([blob], "rota-blacklist-" + Date.now() + ".jpg", { type: "image/jpeg" });
   }
   async function uploadBlacklistPhoto(file) {
-    if (!isAdmin() || !adminToken) throw new Error("Somente o administrador pode enviar fotos para a blacklist.");
+    if (!can("blacklist.gerenciar")) throw new Error("Sua conta não pode alterar a blacklist.");
     var optimized = await optimizeBlacklistPhoto(file), form = new FormData();
     form.append("photo", optimized);
-    var headers = { "x-rota-admin-session": adminToken };
+    var headers = authHeaders();
     var response = await fetch("/api/blacklist-photo", { method: "POST", headers: headers, body: form });
     var body = await response.json().catch(function () { return {}; });
     if (!response.ok) throw new Error(messageFrom(body, "Falha ao enviar a foto."));
@@ -309,10 +333,10 @@
   }
   async function saveRoster(record) { return protectedRequest("/api/roster", "POST", record); }
   async function uploadRosterPhoto(file) {
-    if (!isAdmin() || !adminToken) throw new Error("Somente a administração pode enviar fotos do efetivo.");
+    if (!can("efetivo.gerenciar")) throw new Error("Sua conta não pode alterar o efetivo.");
     var optimized = await optimizeBlacklistPhoto(file), form = new FormData();
     form.append("photo", optimized);
-    var response = await fetch("/api/roster-photo", { method: "POST", headers: { "x-rota-admin-session": adminToken }, body: form });
+    var response = await fetch("/api/roster-photo", { method: "POST", headers: authHeaders(), body: form });
     var body = await response.json().catch(function () { return {}; });
     if (!response.ok) throw new Error(messageFrom(body, "Falha ao enviar a foto."));
     return body;
@@ -322,6 +346,10 @@
     isConfigured: isConfigured,
     current: function () { return current; },
     isAdmin: isAdmin,
+    can: can,
+    canManage: canManage,
+    profile: function () { return profile; },
+    loadProfile: loadProfile,
     restore: validSession,
     signIn: signIn,
     adminLogin: adminLogin,

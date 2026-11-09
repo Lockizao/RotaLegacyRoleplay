@@ -1,5 +1,5 @@
 import { clean, json, originError } from "./http.js";
-import { requireAdmin } from "./auth.js";
+import { requirePermission } from "./auth.js";
 import { configuration, supabase } from "./supabase.js";
 const MAX_BODY_BYTES = 5000;
 const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
@@ -37,7 +37,7 @@ export async function handleBlacklist(request, env) {
       const rows = await supabase(env, "/rest/v1/rota_blacklist?select=id,character_name,player_id,photo_url,created_at,is_active&is_active=eq.true&order=created_at.desc&limit=500", { method: "GET" }, true);
       return json(200, { rows: (Array.isArray(rows) ? rows : []).map(publicRow) });
     }
-    const staff = await requireAdmin(request, env), bodyText = await request.text();
+    const staff = await requirePermission(request, env, "blacklist.gerenciar"), bodyText = await request.text();
     if (encoder.encode(bodyText).byteLength > MAX_BODY_BYTES) return json(413, { error: "Solicitação muito grande." });
     let input; try { input = JSON.parse(bodyText || "{}"); } catch (_) { return json(400, { error: "Dados inválidos." }); }
     if (!input || typeof input !== "object" || Array.isArray(input)) return json(400, { error: "Dados inválidos." });
@@ -64,7 +64,7 @@ export async function handleBlacklistPhoto(request, env) {
   if (request.method !== "POST") return json(405, { error: "Método não permitido." });
   const rejected = originError(request); if (rejected) return json(403, { error: rejected });
   try {
-    await requireAdmin(request, env);
+    await requirePermission(request, env, "blacklist.gerenciar");
     const declaredSize = Number(request.headers.get("content-length") || 0);
     if (declaredSize > MAX_PHOTO_BYTES + 65536) return json(413, { error: "A foto é grande demais. Envie uma imagem de até 3 MB." });
     const form = await request.formData(), file = form.get("photo");

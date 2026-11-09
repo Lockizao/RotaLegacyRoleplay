@@ -33,6 +33,8 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
 
    Para os quadros compartilhados da área policial (**Operações**, **Registros RP** e **Procurados RP**), execute também `supabase/police-board.sql`. Sem ele, essas páginas mostram "Não foi possível carregar o quadro da equipe".
 
+   Para as **tags e permissões** da equipe (Comando, Recrutador, Corregedoria e as que o comando criar), execute `supabase/tags.sql` depois do `schema.sql` e do `roster-shared-login.sql`. Sem ele, só o administrador do servidor consegue usar a Administração.
+
    Para **Comunicados** e **Editais**, execute `supabase/public-content.sql`. A administração publica e remove os dois pelo **Painel policial** (botões "Publicar comunicado" e "Publicar edital"), sem precisar editar o código. As inscrições só são aceitas para editais publicados e dentro do período de inscrição.
 
    Ao atualizar o portal, execute de novo o `supabase/schema.sql`: ele pode ser reexecutado com segurança e aplica as proteções novas (decisão única de tickets, limite de pedidos e bloqueio de tentativas de login administrativo).
