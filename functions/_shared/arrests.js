@@ -1,5 +1,5 @@
 import { clean, json, originError } from "./http.js";
-import { requireStaff } from "./auth.js";
+import { assertCanRemove, checkArea, requireStaff } from "./auth.js";
 import { supabase } from "./supabase.js";
 import { GTA_WEAPONS } from "./weapons.js";
 const encoder = new TextEncoder();
@@ -20,6 +20,8 @@ export async function handleArrests(request, env) {
   try {
     const staff = await requireStaff(request, env);
     const select = "id,character_name,player_id,discord,officer,place,weapon,weapons,has_c4,has_dirty_money,dirty_money_amount,has_drugs,drug_amount,reason,sentence,detail,person_photo_path,inventory_photo_path,created_at";
+    if (request.method === "GET") await checkArea(env, staff, "prisoes.ver");
+    else await checkArea(env, staff, "prisoes.registrar");
     if (request.method === "GET") { const rows = await supabase(env, "/rest/v1/arrest_records?select=" + select + "&is_active=eq.true&order=created_at.desc&limit=500", { method: "GET" }); return json(200, { rows: await Promise.all((Array.isArray(rows) ? rows : []).map((row) => publicRow(env, row))) }); }
     const bodyText = await request.text(); if (encoder.encode(bodyText).byteLength > MAX_BODY_BYTES) return json(413, { error: "Solicitação muito grande." });
     let input; try { input = JSON.parse(bodyText || "{}"); } catch (_) { return json(400, { error: "Dados inválidos." }); }
@@ -40,6 +42,9 @@ export async function handleArrests(request, env) {
       return json(201, { row: await publicRow(env, rows[0]) });
     }
     const id = clean(input.id, 36); if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) return json(400, { error: "Registro inválido." });
+    const owner = await supabase(env, "/rest/v1/arrest_records?select=created_by&id=eq." + encodeURIComponent(id) + "&is_active=eq.true&limit=1", { method: "GET" });
+    if (!Array.isArray(owner) || !owner.length) return json(404, { error: "Registro não encontrado ou já removido." });
+    assertCanRemove(staff, owner[0].created_by);
     const rows = await supabase(env, "/rest/v1/arrest_records?id=eq." + encodeURIComponent(id) + "&is_active=eq.true", { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ is_active: false, removed_at: new Date().toISOString(), removed_by: staff.id }) });
     if (!Array.isArray(rows) || !rows.length) return json(404, { error: "Registro não encontrado ou já removido." });
     await purgeExpiredArrestPhotos(env).catch(() => {});

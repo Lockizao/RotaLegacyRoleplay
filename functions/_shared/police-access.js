@@ -1,6 +1,6 @@
 import { clean, encodeBase64Url, fail, json, originError } from "./http.js";
-import { requireAdmin, requireStaff, signAdmin } from "./auth.js";
-import { ALL_PERMISSIONS, PERMISSIONS, validPermissions } from "./permissions.js";
+import { allowedAreas, areaRules, assertNotSuspended, outranks, requireAdmin, requireStaff, rosterRank, signAdmin } from "./auth.js";
+import { ALL_PERMISSIONS, AREAS, PERMISSIONS, RANKS, rankLevel, validPermissions } from "./permissions.js";
 const MAX_BODY_BYTES = 16000;
 const SESSION_SECONDS = 8 * 60 * 60;
 const encoder = new TextEncoder();
@@ -93,8 +93,9 @@ async function officerLogin(env, input) {
     if (error.status === 400 || error.status === 401) throw fail(401, "Nome ou token incorreto. Se esqueceu o token, solicite uma troca.");
     throw error;
   }
-  const members = await db(env, "police_users?select=user_id,display_name,normalized_name,role,enabled&user_id=eq." + encodeURIComponent(session.user.id) + "&enabled=eq.true", "GET");
+  const members = await db(env, "police_users?select=user_id,display_name,normalized_name,role,enabled,suspended_until,suspension_reason&user_id=eq." + encodeURIComponent(session.user.id) + "&enabled=eq.true", "GET");
   if (!Array.isArray(members) || !members.length) throw fail(403, "Esta conta não está autorizada. Peça aprovação à administração.");
+  assertNotSuspended(members[0]);
   await db(env, "login_events", "POST", { user_id: session.user.id, display_name: members[0].display_name, role: members[0].role || "policial", logged_at: new Date().toISOString() }, "return=minimal");
   session.user.user_metadata = session.user.user_metadata || {};
   session.user.user_metadata.full_name = members[0].display_name;
@@ -162,7 +163,7 @@ async function dashboard(env, actor) {
   const issues = [];
   const [requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster] = await Promise.all([
     dashboardRows(env, "solicitações de acesso", "access_requests?select=id,display_name,normalized_name,request_type,status,created_at&order=created_at.desc&limit=150", issues),
-    dashboardRows(env, "contas policiais", "police_users?select=user_id,display_name,normalized_name,role,enabled,created_at,roster_id&order=display_name.asc&limit=300", issues),
+    dashboardRows(env, "contas policiais", "police_users?select=user_id,display_name,normalized_name,role,enabled,created_at,roster_id,suspended_until,suspension_reason,suspended_by&order=display_name.asc&limit=300", issues),
     dashboardRows(env, "histórico de acesso", "login_events?select=id,user_id,display_name,role,logged_at&order=logged_at.desc&limit=40", issues),
     dashboardRows(env, "B.O.", "bo_tickets?select=id,public_id,player,legacy_name,category,status,created_at&order=created_at.desc&limit=100", issues),
     dashboardRows(env, "Ouvidoria", "ouvidoria_tickets?select=id,public_id,player,legacy_name,category,status,created_at&order=created_at.desc&limit=100", issues),
@@ -184,12 +185,17 @@ async function dashboard(env, actor) {
     db(env, "rota_user_tags?select=user_id,tag_id,granted_by,granted_at", "GET").catch(() => []),
     db(env, "rota_tag_log?select=id,action,actor,tag_name,target_name,created_at&order=created_at.desc&limit=40", "GET").catch(() => [])
   ]);
-  const result = { requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues, tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), userTags: userTags || [], tagLog: tagLog || [], catalog: PERMISSIONS };
+  const [userPermissions, rules, rankHistory] = await Promise.all([
+    db(env, "rota_user_permissions?select=user_id,permission,granted_by,granted_at", "GET").catch(() => []),
+    areaRules(env),
+    db(env, "rota_rank_history?select=id,qra,from_rank,to_rank,actor,reason,created_at&order=created_at.desc&limit=30", "GET").catch(() => [])
+  ]);
+  const result = { userPermissions: userPermissions || [], rules, rankHistory: rankHistory || [], areas: AREAS, ranks: RANKS, actorLevel: actor ? actor.level : 99, actorRank: actor ? actor.rank : "", requests, officers, logins, boTickets, ouvidoriaTickets, applications, arrests, blacklist, roster, pendingBoCount: pendingBo.length, pendingOuvidoriaCount: pendingOuvidoria.length, dataIssues: issues, tags: (tags || []).map((t) => ({ ...t, permissions: validPermissions(t.permissions) })), userTags: userTags || [], tagLog: tagLog || [], catalog: PERMISSIONS };
   // Quem entra por tag só recebe os dados das áreas que pode gerenciar.
   if (actor && actor.role !== "admin") {
     const can = (p) => actor.permissions.includes(p), people = can("acessos.gerenciar") || can("tags.gerenciar");
     if (!can("acessos.gerenciar")) { result.requests = []; result.logins = []; }
-    if (!people) result.officers = [];
+    if (!people) { result.officers = []; result.userPermissions = []; }
     if (!can("editais.gerenciar")) result.applications = [];
     if (!can("tags.gerenciar")) result.tagLog = [];
     result.permissions = actor.permissions;
@@ -214,18 +220,71 @@ function canHandle(actor, permissions) {
   return actor.role === "admin" || permissions.every((p) => actor.permissions.includes(p));
 }
 
+// Nível da patente de uma conta (pela ficha do efetivo; sem ficha = Recruta).
+async function accountLevel(env, userId) {
+  const rows = await db(env, "police_users?select=roster_id,display_name&user_id=eq." + encodeURIComponent(userId) + "&limit=1", "GET");
+  if (!rows.length) throw fail(404, "Integrante não encontrado.");
+  return { level: rankLevel(await rosterRank(env, rows[0].roster_id)), name: rows[0].display_name };
+}
+async function assertOutranks(env, actor, userId) {
+  const target = await accountLevel(env, userId);
+  if (!outranks(actor, target.level)) throw fail(403, "Você só pode agir sobre integrantes de patente menor que a sua.");
+  return target;
+}
+
+async function permAssign(env, actor, actorName, input, grant) {
+  const userId = clean(input.userId, 80), permission = clean(input.permission, 60);
+  if (!PERMISSIONS[permission]) throw fail(400, "Poder inválido.");
+  if (!canHandle(actor, [permission])) throw fail(403, "Você só pode " + (grant ? "dar" : "tirar") + " poderes que você mesmo tem.");
+  const target = await assertOutranks(env, actor, userId);
+  if (grant) await db(env, "rota_user_permissions", "POST", { user_id: userId, permission, granted_by: actorName }, "resolution=ignore-duplicates,return=minimal");
+  else await db(env, "rota_user_permissions?user_id=eq." + encodeURIComponent(userId) + "&permission=eq." + encodeURIComponent(permission), "DELETE", undefined, "return=minimal");
+  await logTag(env, { action: grant ? "poder" : "tirar-poder", actor: actorName, tag_name: PERMISSIONS[permission], target_user: userId, target_name: target.name });
+  return { ok: true };
+}
+
+async function suspendAccount(env, actor, actorName, input, suspend) {
+  const userId = clean(input.userId, 80), reason = clean(input.reason, 300);
+  if (reason.length < 5) throw fail(400, suspend ? "Escreva o motivo da suspensão." : "Escreva o motivo para tirar a suspensão antes do prazo.");
+  const target = await assertOutranks(env, actor, userId);
+  let change, details;
+  if (suspend) {
+    const days = Number(input.days);
+    if (!Number.isFinite(days) || days < 0.04 || days > 90) throw fail(400, "O prazo da suspensão vai de 1 hora a 90 dias.");
+    const until = new Date(Date.now() + Math.round(days * 86400000)).toISOString();
+    change = { suspended_until: until, suspension_reason: reason, suspended_by: actorName };
+    details = { until, reason };
+  } else {
+    change = { suspended_until: null, suspension_reason: "", suspended_by: "" };
+    details = { reason };
+  }
+  await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", change, "return=minimal");
+  await logTag(env, { action: suspend ? "suspender" : "cancelar-suspensao", actor: actorName, target_user: userId, target_name: target.name, details });
+  return { ok: true };
+}
+
+async function rankRulesSave(env, actor, actorName, input) {
+  const area = clean(input.area, 40), minRank = clean(input.minRank, 40);
+  if (!AREAS[area]) throw fail(400, "Área inválida.");
+  if (!RANKS.includes(minRank)) throw fail(400, "Patente inválida.");
+  await db(env, "rota_area_rules", "POST", { area, min_rank: minRank, updated_by: actorName, updated_at: new Date().toISOString() }, "resolution=merge-duplicates,return=minimal");
+  await logTag(env, { action: "regra", actor: actorName, tag_name: AREAS[area], details: { minRank } });
+  return { ok: true };
+}
+
 async function logTag(env, entry) {
   await db(env, "rota_tag_log", "POST", entry, "return=minimal").catch(() => {});
 }
 
 async function myProfile(env, actor) {
-  if (actor.role === "admin") return { role: "admin", name: "Administração", permissions: ALL_PERMISSIONS, tags: [], roster: null };
+  const rules = await areaRules(env);
+  if (actor.role === "admin") return { role: "admin", name: "Administração", permissions: ALL_PERMISSIONS, tags: [], roster: null, rank: "", level: 99, areas: Object.keys(AREAS) };
   let roster = null;
   if (actor.rosterId) {
     const rows = await db(env, "rota_roster?select=id,qra,full_name,rank,passport,status,photo_url&id=eq." + encodeURIComponent(actor.rosterId) + "&limit=1", "GET").catch(() => []);
     if (Array.isArray(rows) && rows.length) roster = { id: rows[0].id, qra: rows[0].qra, fullName: rows[0].full_name, rank: rows[0].rank, passport: rows[0].passport, status: rows[0].status, photoUrl: rows[0].photo_url || "" };
   }
-  return { role: actor.role, name: actor.name, permissions: actor.permissions, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster };
+  return { role: actor.role, name: actor.name, permissions: actor.permissions, direct: actor.direct, tags: actor.tags.map((t) => ({ id: t.id, name: t.name })), roster, rank: actor.rank || "Recruta", level: actor.level, areas: allowedAreas(actor, rules) };
 }
 
 async function tagsList(env) {
@@ -283,16 +342,19 @@ async function tagAssign(env, actor, actorName, input, grant) {
   if (!tags.length) throw fail(404, "Tag não encontrada.");
   if (!users.length) throw fail(404, "Integrante não encontrado.");
   if (!canHandle(actor, validPermissions(tags[0].permissions))) throw fail(403, "Você só pode " + (grant ? "dar" : "tirar") + " tags cujas permissões você mesmo tem.");
+  await assertOutranks(env, actor, userId);
   if (grant) await db(env, "rota_user_tags", "POST", { user_id: userId, tag_id: tagId, granted_by: actorName }, "resolution=ignore-duplicates,return=minimal");
   else await db(env, "rota_user_tags?user_id=eq." + encodeURIComponent(userId) + "&tag_id=eq." + encodeURIComponent(tagId), "DELETE", undefined, "return=minimal");
   await logTag(env, { action: grant ? "dar" : "tirar", actor: actorName, tag_id: tagId, tag_name: tags[0].name, target_user: userId, target_name: users[0].display_name });
   return { ok: true };
 }
 
-async function officerLink(env, actorName, input) {
+async function officerLink(env, actor, actorName, input) {
   const userId = clean(input.userId, 80), rosterId = clean(input.rosterId, 36);
   if (!userId) throw fail(400, "Conta inválida.");
   if (rosterId && !/^[0-9a-f-]{36}$/i.test(rosterId)) throw fail(400, "Ficha do efetivo inválida.");
+  await assertOutranks(env, actor, userId);
+  if (rosterId && !outranks(actor, rankLevel(await rosterRank(env, rosterId)))) throw fail(403, "Você só pode vincular fichas de patente menor que a sua.");
   try {
     const rows = await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { roster_id: rosterId || null }, "return=representation");
     if (!rows.length) throw fail(404, "Conta não encontrada.");
@@ -314,7 +376,12 @@ const ACTION_PERMISSION = {
   "tag-save": "tags.gerenciar",
   "tag-delete": "tags.gerenciar",
   "tag-grant": "tags.gerenciar",
-  "tag-revoke": "tags.gerenciar"
+  "tag-revoke": "tags.gerenciar",
+  "perm-grant": "tags.gerenciar",
+  "perm-revoke": "tags.gerenciar",
+  "suspend": "integrantes.suspender",
+  "unsuspend": "integrantes.suspender",
+  "rank-rules-save": "regras.ajustar"
 };
 const MANAGE_ACTIONS = ["admin-dashboard", "tags-list"];
 
@@ -333,7 +400,11 @@ async function handleAdmin(request, env, input) {
   if (input.action === "tag-save") return tagSave(env, actor, actorName, input);
   if (input.action === "tag-delete") return tagDelete(env, actor, actorName, input);
   if (input.action === "tag-grant" || input.action === "tag-revoke") return tagAssign(env, actor, actorName, input, input.action === "tag-grant");
-  if (input.action === "officer-link") return officerLink(env, actorName, input);
+  if (input.action === "officer-link") return officerLink(env, actor, actorName, input);
+  if (input.action === "perm-grant" || input.action === "perm-revoke") return permAssign(env, actor, actorName, input, input.action === "perm-grant");
+  if (input.action === "suspend" || input.action === "unsuspend") return suspendAccount(env, actor, actorName, input, input.action === "suspend");
+  if (input.action === "rank-rules-save") return rankRulesSave(env, actor, actorName, input);
+  if (input.action === "token-rotate" || input.action === "officer-toggle") await assertOutranks(env, actor, clean(input.userId, 80));
   if (input.action === "edital-applications-list") {
     const rows = await db(env, "edital_applications?select=id,edital_id,edital_title,full_name,server_rg,candidate_name,player_id,real_age,rp_experience,police_experience,roleplay_definition,metagaming_definition,powergaming_definition,why_pmce,character_story,status,created_at&order=created_at.desc&limit=200", "GET");
     return { rows: rows || [] };
