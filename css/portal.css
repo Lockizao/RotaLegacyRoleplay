@@ -1184,3 +1184,29 @@ b.rc-age-flag{display:inline-block;margin-top:2px;font-size:13px}
 .access-login form .check-line{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;text-align:left;font-weight:500;margin:4px 0 16px}
 .access-login form .check-line input{width:20px;height:20px;min-height:0;flex:0 0 auto;margin:0;padding:0}
 .access-login form .access-legacy{display:block;margin:12px auto 0}
+
+/* ================= equipe online e relógio ================= */
+.site-clock{font-size:13px;color:var(--nevoa);font-variant-numeric:tabular-nums;white-space:nowrap;margin-right:6px}
+@media (max-width:1180px){.nav-actions .site-clock{display:none}}
+.team-top{display:flex;gap:16px;align-items:end;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.team-clock{display:grid;gap:2px}
+.team-clock small{color:var(--nevoa);font-size:13px}
+.team-clock b{font:700 26px/1.1 var(--display);color:var(--faixa);font-variant-numeric:tabular-nums}
+.team-search{display:grid;gap:6px;flex:0 1 320px;font-weight:600;color:var(--faixa)}
+.team-count{padding:16px 20px 8px;color:var(--texto)}
+.team-count b{color:var(--radio)}
+.team-list{list-style:none;margin:0;padding:0 8px 8px}
+.team-row{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;border-top:1px solid var(--friso)}
+.team-row:first-child{border-top:0}
+.team-insignia{width:26px;height:30px}
+.team-insignia-empty{display:block;border:1.5px dashed var(--friso-forte);border-radius:4px;width:22px;height:26px}
+.team-who{min-width:0;overflow-wrap:anywhere;color:var(--faixa);font-size:16px}
+.team-rank{color:var(--demarcacao-texto);font-weight:700}
+.team-rank.is-visitor{color:var(--nevoa)}
+.team-name{font-weight:600}
+.team-id{color:var(--nevoa);font-variant-numeric:tabular-nums}
+.team-status{text-align:right}
+.team-seen{display:grid;font-size:13px;color:var(--nevoa)}
+.team-seen small{font-size:12px;font-variant-numeric:tabular-nums}
+.team-note{margin-top:10px}
+@media (max-width:600px){.team-row{grid-template-columns:26px minmax(0,1fr)}.team-status{grid-column:2;text-align:left}}

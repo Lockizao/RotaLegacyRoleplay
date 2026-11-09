@@ -245,6 +245,8 @@
     loginIdPending = false;
     if (profile) { profile.mustSetLoginId = false; profile.loginId = String(loginId).trim(); }
   }
+  // Sinal de vida para a lista Equipe (online / visto por último).
+  function heartbeat() { if (officerToken()) functionCall("heartbeat", {}, true).catch(function () {}); }
   function myLoginId() { return profile && profile.loginId ? profile.loginId : ""; }
   async function setPassword(password) {
     var result = await functionCall("set-password", { password: String(password || "") }, true);
@@ -462,6 +464,7 @@
     needsLoginId: needsLoginId,
     setLoginId: setLoginId,
     myLoginId: myLoginId,
+    heartbeat: heartbeat,
     setPassword: setPassword,
     receptionCall: receptionCall,
     adoptSession: adoptSession,

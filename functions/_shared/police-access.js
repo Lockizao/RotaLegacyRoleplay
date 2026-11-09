@@ -439,6 +439,12 @@ const MANAGE_ACTIONS = ["admin-dashboard", "tags-list"];
 async function handleAdmin(request, env, input) {
   if (input.action === "admin-session") { await requireAdmin(request, env, "Sessão administrativa inválida ou expirada."); return { valid: true }; }
   if (input.action === "set-password") return setOwnPassword(request, env, input);
+  // Sinal de vida de quem está com o portal aberto (lista Equipe: online / visto por último).
+  if (input.action === "heartbeat") {
+    const member = await requireAccount(request, env);
+    await db(env, "police_users?user_id=eq." + encodeURIComponent(member.user_id), "PATCH", { last_seen_at: new Date().toISOString() }, "return=minimal");
+    return { ok: true };
+  }
   if (input.action === "set-login-id") return setOwnLoginId(env, await requireAccount(request, env), input);
   if (input.action === "my-profile") {
     if (!request.headers.get("x-rota-admin-session")) {
