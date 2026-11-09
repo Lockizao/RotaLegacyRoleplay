@@ -4,7 +4,7 @@ Portal comunitário fictício para a unidade ROTA no servidor Legacy Roleplay. O
 
 ## Hospedagem
 
-O projeto pode continuar publicado no Netlify ou ser implantado no Cloudflare Pages. As funções do Cloudflare ficam na pasta `functions/`, na raiz do projeto; os arquivos estáticos compilados ficam em `dist/`.
+O portal é publicado no Cloudflare Pages (https://rotalegacyroleplay.pages.dev). As funções de servidor ficam na pasta `functions/`, na raiz do projeto; os arquivos estáticos compilados ficam em `dist/`.
 
 **Importante:** extraia o ZIP completo e publique a partir da raiz do projeto, mantendo `functions/` ao lado de `build.js`. Não publique somente `dist/` nem abra `index.html` direto do arquivo: sem as Functions e as variáveis do Supabase, o efetivo, a blacklist e os cadastros não conseguem carregar ou salvar dados.
 
@@ -16,18 +16,14 @@ O projeto pode continuar publicado no Netlify ou ser implantado no Cloudflare Pa
    - **Build command:** `node build.js`.
    - **Build output directory:** `dist`.
 3. Em **Settings → Variables and Secrets**, adicione as variáveis e segredos da seção Supabase abaixo para **Production**. Configure Preview também caso vá testar deploys de preview. A URL e a chave pública precisam estar disponíveis no build; os segredos são lidos pelas Functions em runtime.
-4. Faça o deploy e teste primeiro no endereço `*.pages.dev`. Mantenha o Netlify ativo até confirmar login, pedidos de acesso, tickets no celular/PC e a integração opcional com Discord. Só depois aponte um domínio próprio para o Cloudflare.
+4. Faça o deploy e teste no endereço `*.pages.dev`. Um domínio próprio pode ser apontado depois.
 
-A pasta `dist/` é gerada pelo build e não fica no repositório (está no `.gitignore`); o Cloudflare Pages e o Netlify rodam `node build.js` a cada deploy. O build também acrescenta `?v=<hash do conteúdo>` aos CSS e JS do `index.html`, então não é preciso mexer em versões para atualizar o cache dos navegadores. O build cria `dist/_routes.json` para encaminhar somente `/api/*` às Pages Functions; o conteúdo estático continua sendo servido pela CDN. O Netlify mantém a mesma rota `/api/*` por meio do redirecionamento em `netlify.toml`.
-
-### Netlify
-
-O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions`. Enviar uma alteração à branch conectada ao Netlify inicia um deploy automático. As rotas `/api/police-access` e `/api/arrest-notify` são encaminhadas às funções Netlify. As rotas `/api/blacklist` e `/api/arrests` usam Pages Functions do Cloudflare.
+A pasta `dist/` é gerada pelo build e não fica no repositório (está no `.gitignore`); o Cloudflare Pages roda `node build.js` a cada deploy. O build também acrescenta `?v=<hash do conteúdo>` aos CSS e JS do `index.html`, então não é preciso mexer em versões para atualizar o cache dos navegadores. O build cria `dist/_routes.json` para encaminhar somente `/api/*` às Pages Functions; o conteúdo estático continua sendo servido pela CDN.
 
 ## Configurar o Supabase
 
 1. No Supabase, abra **SQL Editor** e execute todo o arquivo `supabase/schema.sql`.
-2. Para habilitar a consulta pública e as fotos da blacklist, execute também `supabase/blacklist.sql` no SQL Editor. Esse script cria/atualiza a tabela, concede leitura pública somente dos campos exibidos e cria o bucket público das imagens. Cidadãos e policiais podem consultar; somente uma sessão de administrador pode incluir ou remover registros.
+2. Para habilitar a consulta pública e as fotos da blacklist, execute também `supabase/blacklist.sql` no SQL Editor. Esse script cria/atualiza a tabela, concede leitura pública somente dos campos exibidos e cria o bucket público das imagens. Cidadãos e policiais podem consultar; incluir e retirar exigem o poder Blacklist, o ID e a senha de quem faz e uma confirmação final.
 3. Cada registro público exibe a foto do personagem, nome e Passaporte Legacy. Cadastre somente personagens e fatos fictícios do roleplay. As fotos ficam acessíveis publicamente no bucket `rota-blacklist-photos`.
 4. Para o livro compartilhado de prisões e as fotos de apreensão, execute (ou execute novamente) `supabase/arrests.sql` antes de publicar. O script atualiza as colunas de armas e imagens e cria o bucket privado `rota-arrest-photos`; listar, registrar, anexar imagens e remover exigem uma conta policial autorizada. As fotos recebem links temporários e só aparecem na área policial.
 
@@ -63,7 +59,7 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
    - `ROTA_SESSION_SECRET`: valor aleatório com pelo menos 32 caracteres para assinar sessões administrativas.
    - `DISCORD_WEBHOOK_URL`: opcional; URL de webhook do Discord para enviar registros de prisão.
 
-   No Netlify, configure em **Project configuration → Environment variables**. No Cloudflare, configure em **Workers & Pages → seu Pages project → Settings → Variables and Secrets**. Não coloque os segredos em arquivos do site, GitHub ou navegador. No Cloudflare, escolha **Encrypt** para cada segredo e salve os valores antes de fazer o deploy.
+   No Cloudflare, configure em **Workers & Pages → seu Pages project → Settings → Variables and Secrets**. Não coloque os segredos em arquivos do site, GitHub ou navegador. No Cloudflare, escolha **Encrypt** para cada segredo e salve os valores antes de fazer o deploy.
 
 7. `build.js` injeta somente a URL e a chave pública no arquivo `dist/js/supabase-config.js`. Os segredos administrativos e a chave privada do Supabase nunca são enviados ao navegador.
 

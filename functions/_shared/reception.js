@@ -5,11 +5,12 @@ import { requireAccount, requireStaff } from "./auth.js";
 import { RANKS, rankLevel, validPermissions } from "./permissions.js";
 import { callSupabase, db, logTag, normalizeName, randomToken, syntheticEmail } from "./police-access.js";
 import { configuration } from "./supabase.js";
-import { BLACKLIST_MESSAGE, activeBlacklist } from "./members.js";
+import { BLACKLIST_MESSAGE, NAME_RE, activeBlacklist } from "./members.js";
 import { identitiesFor } from "./identity.js";
 
 const MAX_BODY_BYTES = 8000;
-const ONLINE_MS = 45 * 1000;          // presença: visto há menos de 45 s
+const ONLINE_MS = 45 * 1000;          // solicitante na sala: visto há menos de 45 s (a sala atualiza a cada 15 s)
+const STAFF_ONLINE_MS = 150 * 1000;   // policial no balcão: mesma janela da lista Equipe (sinal de vida a cada 60 s)
 const EXPIRE_MS = 15 * 60 * 1000;     // quem sai da sala por 15 min perde a vez
 const CLAIM_MS = 10 * 60 * 1000;      // atendimento parado por 10 min volta para a fila
 const MAX_OPEN = 60;
@@ -17,7 +18,6 @@ const OPEN = "status=in.(Pendente,Em%20atendimento)";
 const REQUEST_FIELDS = "id,photo_path,photo_url,age,age_checked_by,display_name,normalized_name,passport,purpose,note,status,created_at,last_seen_at,claimed_by,claimed_name,claimed_at,decided_by,decided_at,granted_role,granted_rank,refusal_reason,user_id,picked_up_at";
 const encoder = new TextEncoder();
 // Nome e sobrenome do personagem: duas palavras só com letras (acentos, apóstrofo e hífen permitidos).
-const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]+ [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]+$/;
 const AGE_REVIEW = 16;
 
 async function hashTicket(ticket) {
@@ -75,7 +75,7 @@ async function responsibles(env) {
   const who = await identitiesFor(env, active);
   return active.map((p) => {
     const id = who[p.user_id] || {};
-    return { label: id.label, name: id.name, loginId: id.loginId, photoUrl: id.photoUrl, nameColor: id.nameColor, rank: id.rank || "Recruta", online: online(p), canGrantRank: perms[p.user_id].has("patentes.promover") };
+    return { label: id.label, name: id.name, loginId: id.loginId, photoUrl: id.photoUrl, nameColor: id.nameColor, rank: id.rank || "Recruta", online: !!p.last_seen_at && Date.now() - new Date(p.last_seen_at).getTime() < STAFF_ONLINE_MS, canGrantRank: perms[p.user_id].has("patentes.promover") };
   }).sort((a, b) => (b.online - a.online) || (rankLevel(b.rank) - rankLevel(a.rank)));
 }
 
@@ -100,7 +100,7 @@ async function join(request, env, input) {
   if (account && account.role === "policial" && account.roster_id) throw fail(409, "Você já é integrante da ROTA.");
   const name = account ? account.display_name : clean(input.name, 80);
   const normalized = account ? account.normalized_name : normalizeName(name);
-  const passport = clean(input.passport, 20), note = clean(input.note, 300, true);
+  const passport = account && account.login_id ? account.login_id : clean(input.passport, 20), note = clean(input.note, 300, true);
   const purpose = account ? "ingressar" : (input.purpose === "ingressar" ? "ingressar" : "visitar");
   if (!account && !NAME_RE.test(name)) throw fail(400, "Informe só o nome e o sobrenome do seu personagem na cidade (ex.: João Silva), sem números nem apelidos.");
   if (name.length < 2 || normalized.length < 2) throw fail(400, "Informe o nome do seu personagem na cidade.");
@@ -170,8 +170,15 @@ async function pickup(env, input) {
   const marked = await db(env, "access_requests?id=eq." + encodeURIComponent(me.id) + "&picked_up_at=is.null", "PATCH", { picked_up_at: new Date().toISOString() }, "return=representation");
   if (!Array.isArray(marked) || !marked.length) throw fail(409, "O token deste pedido já foi entregue. Se perdeu, peça a troca de token.");
   const token = randomToken();
-  await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(me.user_id), { method: "PUT", body: JSON.stringify({ password: token }) });
-  const session = await callSupabase(env, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: syntheticEmail(me.normalized_name), password: token }) }, true);
+  let session;
+  try {
+    const owner = await db(env, "police_users?select=login_email&user_id=eq." + encodeURIComponent(me.user_id) + "&limit=1", "GET");
+    await callSupabase(env, "/auth/v1/admin/users/" + encodeURIComponent(me.user_id), { method: "PUT", body: JSON.stringify({ password: token }) });
+    session = await callSupabase(env, "/auth/v1/token?grant_type=password", { method: "POST", body: JSON.stringify({ email: (owner[0] && owner[0].login_email) || syntheticEmail(me.normalized_name), password: token }) }, true);
+  } catch (error) {
+    await db(env, "access_requests?id=eq." + encodeURIComponent(me.id), "PATCH", { picked_up_at: null }, "return=minimal").catch(() => {});
+    throw error;
+  }
   const account = await db(env, "police_users?select=display_name,role,login_id&user_id=eq." + encodeURIComponent(me.user_id) + "&limit=1", "GET");
   session.user.user_metadata = { ...(session.user.user_metadata || {}), full_name: account[0].display_name, role: account[0].role };
   await db(env, "login_events", "POST", { user_id: me.user_id, display_name: account[0].display_name, role: account[0].role, logged_at: new Date().toISOString() }, "return=minimal").catch(() => {});
@@ -213,7 +220,9 @@ function claimedByOther(row, actor) {
 async function claim(env, actor, input) {
   const row = await loadOpen(env, clean(input.id, 36));
   if (claimedByOther(row, actor)) throw fail(409, "Este pedido já está em atendimento com " + (row.claimed_name || "outro policial") + ".");
-  await db(env, "access_requests?id=eq." + encodeURIComponent(row.id) + "&" + OPEN, "PATCH", { status: "Em atendimento", claimed_by: actor.id, claimed_name: staffName(actor), claimed_at: new Date().toISOString() }, "return=minimal");
+  const free = row.status === "Pendente" ? "&status=eq.Pendente" : "&claimed_at=eq." + encodeURIComponent(row.claimed_at || "");
+  const taken = await db(env, "access_requests?id=eq." + encodeURIComponent(row.id) + free, "PATCH", { status: "Em atendimento", claimed_by: actor.id, claimed_name: staffName(actor), claimed_at: new Date().toISOString() }, "return=representation");
+  if (!Array.isArray(taken) || !taken.length) throw fail(409, "Outro policial acabou de pegar este atendimento.");
   await logTag(env, { action: "recepcao-atender", actor: staffName(actor), target_name: row.display_name, details: { requestId: row.id } }).catch(() => {});
   await notify(env);
   return { ok: true };
@@ -273,7 +282,8 @@ async function decide(env, actor, input) {
     if (fullName.length < 3) throw fail(400, "Informe o nome completo do personagem.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) throw fail(400, "Informe a data de nascimento do personagem.");
     try {
-      const passport = row.passport || clean(input.passport, 20);
+      const passport = row.passport;
+      if (!/^\d{1,10}$/.test(passport || "")) throw fail(400, "Este pedido não tem um passaporte válido (só números).");
       // Quem foi removido e volta reaproveita a ficha antiga (Inativa) com o mesmo passaporte; o histórico continua.
       const old = await db(env, "rota_roster?select=id,status&passport=eq." + encodeURIComponent(passport) + "&limit=1", "GET");
       if (old.length && old[0].status !== "Inativo") throw fail(409, "Já existe uma ficha ativa no efetivo com este passaporte.");
@@ -287,15 +297,15 @@ async function decide(env, actor, input) {
         rosterId = fichas[0].id;
       }
     } catch (error) {
-      if (/ficha ativa/.test(error.message)) throw error;
-      if (/ficha ativa/.test(error.message)) throw error;
+      if (/ficha ativa|passaporte válido/.test(error.message)) throw error;
       if (error.status === 409 || /duplicate|unique/i.test(error.message)) throw fail(409, "Já existe uma ficha no efetivo com este QRA ou passaporte.");
       throw error;
     }
     try {
-      if (userId) await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { role: "policial", roster_id: rosterId }, "return=minimal");
-      if (userId && /^\d{1,10}$/.test(row.passport || "")) await db(env, "police_users?user_id=eq." + encodeURIComponent(userId) + "&login_id=is.null", "PATCH", { login_id: row.passport }, "return=minimal").catch(() => {});
-      else userId = await createAccount(env, row, "policial", rosterId);
+      if (userId) {
+        await db(env, "police_users?user_id=eq." + encodeURIComponent(userId), "PATCH", { role: "policial", roster_id: rosterId }, "return=minimal");
+        await db(env, "police_users?user_id=eq." + encodeURIComponent(userId) + "&login_id=is.null", "PATCH", { login_id: row.passport }, "return=minimal").catch(() => {});
+      } else userId = await createAccount(env, row, "policial", rosterId);
     } catch (error) {
       await db(env, "rota_roster?id=eq." + encodeURIComponent(rosterId), reusedRoster ? "PATCH" : "DELETE", reusedRoster ? { status: "Inativo" } : undefined, "return=minimal").catch(() => {});
       throw error;

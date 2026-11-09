@@ -24,7 +24,7 @@ export async function findEdital(env, id) {
   return Array.isArray(rows) && rows.length ? toEdital(rows[0]) : null;
 }
 
-// Comunicados e editais: leitura pública, publicação e remoção só pelo administrador.
+// Comunicados e editais: leitura pública; publicar e remover exigem os poderes Comunicados ou Editais.
 export async function handleContent(request, env) {
   if (!["GET", "POST", "DELETE"].includes(request.method)) return json(405, { error: "Método não permitido." });
   if (request.method !== "GET") {

@@ -13,16 +13,16 @@ create unique index if not exists police_users_login_id_active_uidx on public.po
 
 -- Preenche o ID de quem já dá para saber (ficha do efetivo; depois pedido aprovado na recepção), sem colidir.
 with candidates as (
-  select p.user_id, f.passport as login_id
+  select p.user_id, f.passport as login_id, 1 as preference
   from public.police_users p join public.rota_roster f on f.id = p.roster_id
   where p.login_id is null and p.removed_at is null and f.passport ~ '^[0-9]{1,10}$'
   union all
-  select distinct on (r.user_id) r.user_id, r.passport
+  select distinct on (r.user_id) r.user_id, r.passport, 2 as preference
   from public.access_requests r join public.police_users p on p.user_id = r.user_id
   where p.login_id is null and p.removed_at is null and r.status = 'Aprovado' and r.passport ~ '^[0-9]{1,10}$'
 ),
 first_choice as (
-  select distinct on (user_id) user_id, login_id from candidates order by user_id
+  select distinct on (user_id) user_id, login_id from candidates order by user_id, preference
 ),
 unique_choice as (
   select c.* from first_choice c
@@ -55,7 +55,7 @@ create table if not exists public.rota_audit_log (
 );
 create index if not exists rota_audit_log_created_idx on public.rota_audit_log (created_at desc);
 create or replace function public.rota_audit_log_readonly()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = '' as $$
 begin
   raise exception 'O registro de auditoria não pode ser alterado nem apagado.';
 end;

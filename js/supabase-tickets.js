@@ -47,6 +47,8 @@
       fetch(url + "/auth/v1/logout?scope=local", { method: "POST", headers: apiHeaders(officerToken), keepalive: true }).catch(function () {});
     }
     saveSession(null); adminToken = ""; profile = null; sessionStorage.removeItem(ADMIN_KEY);
+    passwordPending = false; loginIdPending = false;
+    try { window.dispatchEvent(new Event("rota:signed-out")); } catch (_) {}
   }
   function isConfigured() {
     return /^(?:https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1)[:/])/i.test(url) && !!key && !/COLE_AQUI|SUA_CHAVE/i.test(key);
@@ -68,10 +70,17 @@
   }
   async function responseData(response) {
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(messageFrom(body, "Erro na comunicação com o serviço."));
+    if (!response.ok) throw Object.assign(new Error(messageFrom(body, "Erro na comunicação com o serviço.")), { status: response.status });
     return body;
   }
+  async function freshToken() {
+    if (current && current.access_token && current.access_token !== "admin" && current.refresh_token && current.expires_at && current.expires_at < Date.now() + 60000) {
+      try { await refreshSession(); } catch (_) {}
+    }
+    return officerToken();
+  }
   async function functionCall(action, values, admin) {
+    if (admin && !adminToken) await freshToken();
     var headers = { "Content-Type": "application/json" };
     if (admin && adminToken) headers["x-rota-admin-session"] = adminToken;
     else if (admin && officerToken()) headers.Authorization = "Bearer " + officerToken();
@@ -109,21 +118,12 @@
     return !!role && role !== "policial";
   }
   async function receptionCall(action, values, auth) {
+    if (auth && !isAdmin()) await freshToken();
     var headers = { "Content-Type": "application/json" };
     if (auth && isAdmin() && adminToken) headers["x-rota-admin-session"] = adminToken;
     else if (auth && officerToken()) headers.Authorization = "Bearer " + officerToken();
     var response = await fetch("/api/reception", { method: "POST", headers: headers, body: JSON.stringify(Object.assign({ action: action }, values || {})) });
     return responseData(response);
-  }
-  // Sessão entregue pela recepção na retirada do acesso aprovado.
-  async function adoptSession(session) {
-    if (!session || !session.access_token || !(await policeMembership(session))) throw new Error("Não foi possível entrar com o acesso aprovado.");
-    session.expires_at = Date.now() + (Number(session.expires_in) || 3600) * 1000;
-    adminToken = "";
-    sessionStorage.removeItem(ADMIN_KEY);
-    saveSession(session);
-    await loadProfile();
-    return session;
   }
   // Tempo real da recepção: o servidor avisa no canal público "rota-recepcao" e cada tela busca o estado de novo.
   var realtime = { client: null, channel: null, listeners: [], live: false, loading: null };
@@ -217,7 +217,10 @@
       if (!ok) saveSession(null);
       else { await loadProfile(); touchLastUse(); }
       return ok;
-    } catch (_) { saveSession(null); return false; }
+    } catch (error) {
+      if (error && (error.status === 400 || error.status === 401 || error.status === 403)) saveSession(null);
+      return false;
+    }
   }
   async function signIn(loginId, token, remember, legacyName) {
     try { if (remember) localStorage.setItem(REMEMBER_KEY, "1"); else localStorage.removeItem(REMEMBER_KEY); } catch (_) {}
@@ -266,7 +269,6 @@
     current = { access_token: "admin", user: { id: "rota-admin", email: "admin@rota.invalid", user_metadata: { full_name: "Administrador ROTA", role: "admin" } } };
     return current;
   }
-  async function requestAccess(name) { return functionCall("request-access", { name: String(name || "").trim() }); }
   async function requestTokenReset(name) { return functionCall("request-reset", { name: String(name || "").trim() }); }
   async function adminAction(action, values) {
     if (!adminToken && !officerToken()) throw new Error("Sua sessão expirou. Entre novamente.");
@@ -376,6 +378,7 @@
     return new File([blob], "rota-foto-" + Date.now() + ".jpg", { type: "image/jpeg" });
   }
   async function uploadAvatar(file, ticket) {
+    if (!ticket) await freshToken();
     var form = new FormData(), headers = {};
     form.append("photo", await optimizeAvatar(file));
     if (ticket) form.append("ticket", ticket);
@@ -385,6 +388,7 @@
   }
   async function removeAvatar(userId, reason) { return protectedRequest("/api/avatar", "DELETE", { userId: userId, reason: reason || "" }); }
   async function protectedRequest(endpoint, method, payload) {
+    if (!isAdmin()) await freshToken();
     var headers = { "Content-Type": "application/json" };
     if (isAdmin() && adminToken) headers["x-rota-admin-session"] = adminToken;
     else if (current && current.access_token && current.access_token !== "admin") headers.Authorization = "Bearer " + current.access_token;
@@ -490,7 +494,6 @@
     removeAvatar: removeAvatar,
     setPassword: setPassword,
     receptionCall: receptionCall,
-    adoptSession: adoptSession,
     onReception: onReception,
     receptionLive: receptionLive,
     profile: function () { return profile; },
@@ -498,7 +501,6 @@
     restore: validSession,
     signIn: signIn,
     adminLogin: adminLogin,
-    requestAccess: requestAccess,
     requestTokenReset: requestTokenReset,
     adminAction: adminAction,
     signOut: signOut,
