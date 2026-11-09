@@ -363,6 +363,27 @@
     return rowToTicket(rows[0], kind);
   }
 
+  // Foto do personagem: recorte quadrado e compressão no navegador antes de enviar.
+  async function optimizeAvatar(file) {
+    if (!file || !/^image\/(jpeg|png|webp)$/i.test(file.type || "")) throw new Error("Use uma imagem JPG, PNG ou WebP.");
+    if (file.size > 12 * 1024 * 1024) throw new Error("A imagem é grande demais. Use uma de até 12 MB.");
+    var bitmap = await createImageBitmap(file), side = Math.min(bitmap.width, bitmap.height), size = Math.min(640, side);
+    var canvas = document.createElement("canvas"); canvas.width = size; canvas.height = size;
+    var context = canvas.getContext("2d"); context.fillStyle = "#15181b"; context.fillRect(0, 0, size, size);
+    context.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+    var blob = await new Promise(function (resolve) { canvas.toBlob(resolve, "image/jpeg", 0.85); });
+    if (!blob) throw new Error("Não foi possível preparar a foto.");
+    return new File([blob], "rota-foto-" + Date.now() + ".jpg", { type: "image/jpeg" });
+  }
+  async function uploadAvatar(file, ticket) {
+    var form = new FormData(), headers = {};
+    form.append("photo", await optimizeAvatar(file));
+    if (ticket) form.append("ticket", ticket);
+    else if (officerToken()) headers.Authorization = "Bearer " + officerToken();
+    var response = await fetch("/api/avatar", { method: "POST", headers: headers, body: form });
+    return responseData(response);
+  }
+  async function removeAvatar(userId, reason) { return protectedRequest("/api/avatar", "DELETE", { userId: userId, reason: reason || "" }); }
   async function protectedRequest(endpoint, method, payload) {
     var headers = { "Content-Type": "application/json" };
     if (isAdmin() && adminToken) headers["x-rota-admin-session"] = adminToken;
@@ -465,6 +486,8 @@
     setLoginId: setLoginId,
     myLoginId: myLoginId,
     heartbeat: heartbeat,
+    uploadAvatar: uploadAvatar,
+    removeAvatar: removeAvatar,
     setPassword: setPassword,
     receptionCall: receptionCall,
     adoptSession: adoptSession,

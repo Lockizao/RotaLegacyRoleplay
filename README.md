@@ -43,6 +43,8 @@ O `netlify.toml` define `node build.js`, publica `dist` e usa `netlify/functions
 
    Para **login por ID, remoção de integrantes e Blacklist que bloqueia acesso**, execute `supabase/integrantes.sql` depois do `senhas.sql`. O login passa a ser pelo ID no servidor (passaporte) e senha; contas antigas sem ID entram uma última vez pelo nome e registram o ID. Remover integrante, incluir e retirar da Blacklist exigem o ID e a senha de quem faz, motivo e confirmação final, e tudo fica na auditoria permanente (`rota_audit_log`, que não aceita alteração nem exclusão).
 
+   Para a **identidade dos integrantes** (`[Patente] Nome [ID]` com foto e cor do nome por segmento), execute `supabase/identidade.sql` depois do `integrantes.sql`. As cores ficam em `rota_tags.name_color`/`color_priority` (Comando, Corregedoria, Recrutador) e há o gancho `rota_ranks.name_color` para cores por patente no futuro. As fotos ficam no bucket público `rota-avatars`; sem foto, o site usa a logo da ROTA.
+
    Para **Comunicados** e **Editais**, execute `supabase/public-content.sql`. A administração publica e remove os dois pelo **Painel policial** (botões "Publicar comunicado" e "Publicar edital"), sem precisar editar o código. As inscrições só são aceitas para editais publicados e dentro do período de inscrição.
 
    Ao atualizar o portal, execute de novo o `supabase/schema.sql`: ele pode ser reexecutado com segurança e aplica as proteções novas (decisão única de tickets, limite de pedidos e bloqueio de tentativas de login administrativo).
