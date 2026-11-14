@@ -94,7 +94,7 @@ export async function rosterRank(env, rosterId) {
   return Array.isArray(rows) && rows.length ? rows[0].rank : "";
 }
 
-async function directPermissions(env, userId) {
+export async function directPermissions(env, userId) {
   try {
     const rows = await supabase(env, "/rest/v1/rota_user_permissions?select=permission&user_id=eq." + encodeURIComponent(userId), { method: "GET" });
     return validPermissions((Array.isArray(rows) ? rows : []).map((row) => row.permission));
