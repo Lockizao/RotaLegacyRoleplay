@@ -57,11 +57,12 @@ export function resolveMember(member, mapping) {
   }
   ranks.sort((a, b) => rankLevel(b) - rankLevel(a));
   const user = member.user || {};
-  const parsed = parseNick(member.nick || user.global_name || user.username);
+  // Nome e ID vêm SÓ do apelido neste servidor (nunca do nome global do Discord).
+  const parsed = parseNick(member.nick || "");
   return {
     discordId: String(user.id || ""), username: clean(user.username, 40), bot: !!user.bot,
     rank: ranks[0] || "", tags: [...new Set(tags)], visitor,
-    name: parsed.name || clean(user.global_name || user.username, 60), loginId: parsed.loginId, nickOk: parsed.ok
+    name: parsed.name, loginId: parsed.loginId, nickOk: !!(parsed.ok && parsed.name && parsed.loginId)
   };
 }
 
@@ -125,7 +126,12 @@ export async function syncMember(env, info, state, spend, options) {
   if (state.blockedDiscord.has(info.discordId) || (info.loginId && state.blockedIds.has(info.loginId))) return { skipped: "blacklist" };
   let account = state.byDiscord[info.discordId];
   if (account && account.removed_at) return { skipped: "removido" };
-  const result = { discordId: info.discordId, name: info.name, changes: [] };
+  const label = info.nickOk ? info.name : "@" + info.username;
+  const result = { discordId: info.discordId, name: label, changes: [] };
+  if (!info.nickOk) {
+    result.conflict = "apelido fora do padrão [SIGLA] Nome [ID]";
+    if (!account) return { skipped: "apelido fora do padrão", conflict: result.conflict, name: label };
+  }
   if (!account) {
     if (!info.rank && !opts.allowVisitor) return { skipped: "sem cargo de patente" };
     if (!spend(3)) return { pending: true };
@@ -135,8 +141,8 @@ export async function syncMember(env, info, state, spend, options) {
   }
   const now = new Date().toISOString(), change = { discord_username: info.username, discord_synced_at: now };
   if (account.discord_left_at) { change.discord_left_at = null; change.enabled = true; result.changes.push("voltou ao servidor"); }
-  if (info.name && info.name !== account.display_name) { change.display_name = info.name; result.changes.push("nome"); }
-  if (info.loginId && info.loginId !== account.login_id) {
+  if (info.nickOk && info.name !== account.display_name) { change.display_name = info.name; result.changes.push("nome"); }
+  if (info.nickOk && info.loginId !== account.login_id) {
     const owner = state.accounts.find((a) => a.login_id === info.loginId && !a.removed_at && a.user_id !== account.user_id);
     if (owner) result.conflict = "ID " + info.loginId + " já é de outra conta";
     else { change.login_id = info.loginId; result.changes.push("ID"); }
@@ -146,8 +152,9 @@ export async function syncMember(env, info, state, spend, options) {
   if (info.rank) {
     let ficha = account.roster_id ? state.rosterById[account.roster_id] : null;
     const passport = info.loginId || (ficha && ficha.passport) || "D" + info.discordId.slice(-10);
-    const qra = info.name.length >= 2 ? info.name : info.name + "·";
-    const fullName = info.name.length >= 3 ? info.name : (info.name + " ROTA").slice(0, 100);
+    const baseName = info.nickOk ? info.name : (account.display_name || "Integrante");
+    const qra = baseName.length >= 2 ? baseName : baseName + "·";
+    const fullName = baseName.length >= 3 ? baseName : (baseName + " ROTA").slice(0, 100);
     if (!ficha) {
       const free = state.rosterByPassport[passport];
       const linked = free && state.accounts.some((a) => a.roster_id === free.id && a.user_id !== account.user_id && !a.removed_at && a.role === "policial");
@@ -206,7 +213,7 @@ export async function syncMember(env, info, state, spend, options) {
     await db(env, "police_users?user_id=eq." + encodeURIComponent(account.user_id), "PATCH", change, "return=minimal");
   }
   Object.assign(account, change);
-  if (result.changes.length) await logTag(env, { action: "discord", actor: "Discord", target_user: account.user_id, target_name: info.name, details: { changes: result.changes } }).catch(() => {});
+  if (result.changes.length) await logTag(env, { action: "discord", actor: "Discord", target_user: account.user_id, target_name: label, details: { changes: result.changes } }).catch(() => {});
   result.userId = account.user_id;
   return result;
 }
@@ -226,7 +233,7 @@ export async function syncGuild(env) {
     if (outcome.pending) { report.pending = true; break; }
     if (outcome.skipped) report.skipped++;
     else if (outcome.changes && outcome.changes.length) { report.updated++; if (outcome.changes.includes("conta criada")) report.created++; }
-    if (outcome.conflict) report.conflicts.push(info.name + ": " + outcome.conflict);
+    if (outcome.conflict) report.conflicts.push((outcome.name || info.name || "@" + info.username) + ": " + outcome.conflict);
   }
   if (!report.pending && members.length) {
     for (const account of state.accounts) {

@@ -119,6 +119,7 @@ export async function handleDiscordCallback(request, env) {
     const synced = await syncOne(env, user.id, { allowVisitor: true });
     if (synced.notInGuild) throw fail(403, "Entre no servidor da ROTA no Discord para acessar o portal.");
     if (synced.outcome && synced.outcome.skipped === "blacklist") throw fail(403, "Este ID está na Blacklist da ROTA.");
+    if (synced.outcome && synced.outcome.skipped === "apelido fora do padrão") throw fail(403, "Defina o seu apelido no servidor da ROTA no Discord no padrão [SIGLA] Nome [ID] (ex.: [CAP] João Silva [17319]) e entre de novo.");
     const rows = await db(env, "police_users?select=user_id,display_name,role,enabled,removed_at,login_email,suspended_until,suspension_reason&discord_id=eq." + encodeURIComponent(user.id) + "&limit=1", "GET");
     const account = rows[0];
     if (!account || account.removed_at) throw fail(403, "Esta conta foi removida da corporação.");
